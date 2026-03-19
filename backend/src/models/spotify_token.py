@@ -30,7 +30,12 @@ class SpotifyToken(Base):
 
     @property
     def is_expired(self) -> bool:
-        return datetime.now(timezone.utc) >= self.expires_at
+        now = datetime.now(timezone.utc)
+        expires = self.expires_at
+        # SQLite returns naive datetimes; treat them as UTC for comparison
+        if expires.tzinfo is None:
+            expires = expires.replace(tzinfo=timezone.utc)
+        return now >= expires
 
     def __repr__(self) -> str:
         return f"<SpotifyToken user_id={self.user_id} expires_at={self.expires_at}>"

@@ -1,10 +1,24 @@
 import { useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import axios from 'axios'
 import api from '../services/api'
 
+const ERROR_MESSAGES: Record<string, string> = {
+  access_denied: 'Spotify access was denied. Please try again and accept the permissions.',
+  auth_failed: 'Authentication failed. Please try again.',
+  server_error: 'A server error occurred. Please try again in a moment.',
+  not_implemented: 'This feature is not yet available.',
+}
+
 export default function LoginPage() {
+  const [searchParams] = useSearchParams()
   const [isLoading, setIsLoading] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+  const [error, setError] = useState<string | null>(
+    () => {
+      const errorParam = searchParams.get('error')
+      return errorParam ? (ERROR_MESSAGES[errorParam] ?? 'An error occurred. Please try again.') : null
+    },
+  )
 
   const handleConnect = async () => {
     setIsLoading(true)
@@ -13,8 +27,8 @@ export default function LoginPage() {
       const { data } = await api.get<{ url: string }>('/auth/login')
       window.location.href = data.url
     } catch (err) {
-      if (axios.isAxiosError(err) && err.response?.status === 501) {
-        setError('Spotify OAuth is not yet implemented — coming in Phase 1.')
+      if (axios.isAxiosError(err)) {
+        setError('Could not connect to Spotify. Please try again.')
       } else {
         setError('Something went wrong. Please try again.')
       }

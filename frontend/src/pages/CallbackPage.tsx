@@ -15,25 +15,26 @@ export default function CallbackPage() {
     hasRun.current = true
 
     const code = searchParams.get('code')
+    const state = searchParams.get('state')
     const error = searchParams.get('error')
 
-    if (error || !code) {
+    if (error || !code || !state) {
       navigate('/?error=access_denied', { replace: true })
       return
     }
 
     api
-      .get<{ access_token: string }>(`/auth/callback?code=${code}`)
+      .get<{ access_token: string }>(`/auth/callback?code=${code}&state=${state}`)
       .then(({ data }) => {
         setToken(data.access_token)
         navigate('/sync', { replace: true })
       })
       .catch((err: unknown) => {
         const status = axios.isAxiosError(err) ? err.response?.status : null
-        if (status === 501) {
-          navigate('/?error=not_implemented', { replace: true })
-        } else {
+        if (status === 401) {
           navigate('/?error=auth_failed', { replace: true })
+        } else {
+          navigate('/?error=server_error', { replace: true })
         }
       })
   }, [])
