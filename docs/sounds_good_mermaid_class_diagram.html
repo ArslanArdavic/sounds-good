@@ -1,11 +1,79 @@
 <style>
+#class-diagram {
+  position: relative;
+  border: 0.5px solid var(--color-border-tertiary);
+  border-radius: var(--border-radius-lg);
+  overflow: hidden;
+  background: var(--color-background-primary);
+}
 #class-diagram svg.classDiagram .divider path { stroke-opacity: 0.5; }
 #class-diagram svg.classDiagram .row-rect-odd path,
 #class-diagram svg.classDiagram .row-rect-odd rect,
 #class-diagram svg.classDiagram .row-rect-even path,
 #class-diagram svg.classDiagram .row-rect-even rect { stroke: none !important; }
+#class-diagram svg { max-width: none; height: auto; }
+
+.zoom-controls {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  display: flex;
+  gap: 8px;
+  z-index: 10;
+}
+
+.zoom-btn {
+  width: 32px;
+  height: 32px;
+  background: var(--color-background-primary);
+  border: 0.5px solid var(--color-border-secondary);
+  border-radius: var(--border-radius-md);
+  color: var(--color-text-primary);
+  font-size: 18px;
+  font-weight: 500;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s;
+}
+
+.zoom-btn:hover {
+  background: var(--color-background-secondary);
+  border-color: var(--color-border-primary);
+}
+
+.zoom-btn:active {
+  transform: scale(0.95);
+}
+
+.diagram-wrapper {
+  width: 100%;
+  height: 700px;
+  overflow: auto;
+  cursor: grab;
+}
+
+.diagram-wrapper:active {
+  cursor: grabbing;
+}
+
+.diagram-content {
+  transform-origin: 0 0;
+  transition: transform 0.1s ease-out;
+}
 </style>
-<div id="class-diagram"></div>
+
+<div id="class-diagram">
+  <div class="zoom-controls">
+    <button class="zoom-btn" id="zoom-in" title="Zoom In">+</button>
+    <button class="zoom-btn" id="zoom-out" title="Zoom Out">−</button>
+    <button class="zoom-btn" id="zoom-reset" title="Reset Zoom" style="font-size: 16px;">⟲</button>
+  </div>
+  <div class="diagram-wrapper" id="diagram-wrapper">
+    <div class="diagram-content" id="diagram-content"></div>
+  </div>
+</div>
 <script type="module">
 import mermaid from 'https://esm.sh/mermaid@11/dist/mermaid.esm.min.mjs';
 const dark = matchMedia('(prefers-color-scheme: dark)').matches;
@@ -247,10 +315,10 @@ const diagram = `classDiagram
 `;
 
 const { svg } = await mermaid.render('class-diagram-svg', diagram);
-document.getElementById('class-diagram').innerHTML = svg;
+document.getElementById('diagram-content').innerHTML = svg;
 
 // Round entity box corners
-document.querySelectorAll('#class-diagram svg.classDiagram .node').forEach(node => {
+document.querySelectorAll('#diagram-content svg.classDiagram .node').forEach(node => {
   const firstPath = node.querySelector('path[d]');
   if (!firstPath) return;
   const d = firstPath.getAttribute('d');
@@ -269,7 +337,121 @@ document.querySelectorAll('#class-diagram svg.classDiagram .node').forEach(node 
   }
   firstPath.replaceWith(rect);
 });
+
+// Pan & Zoom Implementation
+let scale = 1;
+let translateX = 0;
+let translateY = 0;
+let isPanning = false;
+let startX, startY;
+
+const wrapper = document.getElementById('diagram-wrapper');
+const content = document.getElementById('diagram-content');
+const zoomInBtn = document.getElementById('zoom-in');
+const zoomOutBtn = document.getElementById('zoom-out');
+const zoomResetBtn = document.getElementById('zoom-reset');
+
+function updateTransform() {
+  content.style.transform = `translate(${translateX}px, ${translateY}px) scale(${scale})`;
+}
+
+zoomInBtn.addEventListener('click', () => {
+  scale = Math.min(scale * 1.2, 3);
+  updateTransform();
+});
+
+zoomOutBtn.addEventListener('click', () => {
+  scale = Math.max(scale / 1.2, 0.5);
+  updateTransform();
+});
+
+zoomResetBtn.addEventListener('click', () => {
+  scale = 1;
+  translateX = 0;
+  translateY = 0;
+  updateTransform();
+});
+
+// Mouse wheel zoom toward cursor
+wrapper.addEventListener('wheel', (e) => {
+  e.preventDefault();
+  const delta = e.deltaY > 0 ? 0.9 : 1.1;
+  const newScale = Math.min(Math.max(scale * delta, 0.5), 3);
+
+  const rect = wrapper.getBoundingClientRect();
+  const x = e.clientX - rect.left;
+  const y = e.clientY - rect.top;
+
+  const scaleChange = newScale / scale;
+  translateX = x - (x - translateX) * scaleChange;
+  translateY = y - (y - translateY) * scaleChange;
+  scale = newScale;
+
+  updateTransform();
+});
+
+// Mouse drag to pan
+wrapper.addEventListener('mousedown', (e) => {
+  isPanning = true;
+  startX = e.clientX - translateX;
+  startY = e.clientY - translateY;
+  wrapper.style.cursor = 'grabbing';
+});
+
+document.addEventListener('mousemove', (e) => {
+  if (!isPanning) return;
+  translateX = e.clientX - startX;
+  translateY = e.clientY - startY;
+  updateTransform();
+});
+
+document.addEventListener('mouseup', () => {
+  isPanning = false;
+  wrapper.style.cursor = 'grab';
+});
+
+// Touch support
+let touchStartDistance = 0;
+let touchStartScale = 1;
+
+wrapper.addEventListener('touchstart', (e) => {
+  if (e.touches.length === 2) {
+    const dx = e.touches[0].clientX - e.touches[1].clientX;
+    const dy = e.touches[0].clientY - e.touches[1].clientY;
+    touchStartDistance = Math.sqrt(dx * dx + dy * dy);
+    touchStartScale = scale;
+  } else if (e.touches.length === 1) {
+    isPanning = true;
+    startX = e.touches[0].clientX - translateX;
+    startY = e.touches[0].clientY - translateY;
+  }
+});
+
+wrapper.addEventListener('touchmove', (e) => {
+  e.preventDefault();
+  if (e.touches.length === 2) {
+    const dx = e.touches[0].clientX - e.touches[1].clientX;
+    const dy = e.touches[0].clientY - e.touches[1].clientY;
+    const distance = Math.sqrt(dx * dx + dy * dy);
+    scale = Math.min(Math.max(touchStartScale * (distance / touchStartDistance), 0.5), 3);
+    updateTransform();
+  } else if (e.touches.length === 1 && isPanning) {
+    translateX = e.touches[0].clientX - startX;
+    translateY = e.touches[0].clientY - startY;
+    updateTransform();
+  }
+});
+
+wrapper.addEventListener('touchend', () => {
+  isPanning = false;
+});
 </script>
+
+<div style="margin-top: 1rem; padding: 1rem; background: var(--color-background-info); border-radius: var(--border-radius-lg);">
+  <p style="font-size: 13px; margin: 0; line-height: 1.6; color: var(--color-text-info);">
+    <strong>Navigation:</strong> Use mouse wheel to zoom, click and drag to pan. Buttons: + zoom in, − zoom out, ⟲ reset. Touch devices: pinch to zoom, drag to pan.
+  </p>
+</div>
 
 <div style="margin-top: 2rem; padding: 1.5rem; background: var(--color-background-secondary); border-radius: var(--border-radius-lg);">
   <h3 style="font-size: 16px; font-weight: 500; margin: 0 0 1rem 0;">Architecture Summary</h3>
