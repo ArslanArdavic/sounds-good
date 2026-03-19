@@ -22,9 +22,12 @@ wheels/
 MANIFEST
 .pytest_cache/
 .coverage
+coverage.xml
 htmlcov/
 *.cover
 .hypothesis/
+.mypy_cache/
+.ruff_cache/
 
 # Virtual environments
 venv/
