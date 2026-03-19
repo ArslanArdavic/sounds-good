@@ -1,0 +1,444 @@
+<style>
+#sequence-diagram { 
+  position: relative; 
+  border: 0.5px solid var(--color-border-tertiary);
+  border-radius: var(--border-radius-lg);
+  overflow: hidden;
+  background: var(--color-background-primary);
+}
+#sequence-diagram svg { max-width: none; height: auto; }
+#sequence-diagram svg.sequenceDiagram .actor { stroke-width: 0.5px !important; }
+#sequence-diagram svg.sequenceDiagram .messageLine0 { stroke-width: 1px !important; }
+#sequence-diagram svg.sequenceDiagram .messageLine1 { stroke-width: 1px !important; }
+
+.zoom-controls {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  display: flex;
+  gap: 8px;
+  z-index: 10;
+}
+
+.zoom-btn {
+  width: 32px;
+  height: 32px;
+  background: var(--color-background-primary);
+  border: 0.5px solid var(--color-border-secondary);
+  border-radius: var(--border-radius-md);
+  color: var(--color-text-primary);
+  font-size: 18px;
+  font-weight: 500;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s;
+}
+
+.zoom-btn:hover {
+  background: var(--color-background-secondary);
+  border-color: var(--color-border-primary);
+}
+
+.zoom-btn:active {
+  transform: scale(0.95);
+}
+
+.diagram-wrapper {
+  width: 100%;
+  height: 600px;
+  overflow: auto;
+  cursor: grab;
+}
+
+.diagram-wrapper:active {
+  cursor: grabbing;
+}
+
+.diagram-content {
+  transform-origin: 0 0;
+  transition: transform 0.1s ease-out;
+}
+</style>
+
+<div id="sequence-diagram">
+  <div class="zoom-controls">
+    <button class="zoom-btn" id="zoom-in" title="Zoom In">+</button>
+    <button class="zoom-btn" id="zoom-out" title="Zoom Out">−</button>
+    <button class="zoom-btn" id="zoom-reset" title="Reset Zoom" style="font-size: 16px;">⟲</button>
+  </div>
+  <div class="diagram-wrapper" id="diagram-wrapper">
+    <div class="diagram-content" id="diagram-content"></div>
+  </div>
+</div>
+
+<script type="module">
+import mermaid from 'https://esm.sh/mermaid@11/dist/mermaid.esm.min.mjs';
+const dark = matchMedia('(prefers-color-scheme: dark)').matches;
+await document.fonts.ready;
+mermaid.initialize({
+  startOnLoad: false,
+  theme: 'base',
+  fontFamily: '"Anthropic Sans", sans-serif',
+  themeVariables: {
+    darkMode: dark,
+    fontSize: '13px',
+    fontFamily: '"Anthropic Sans", sans-serif',
+    actorBorder: dark ? '#9c9a92' : '#73726c',
+    actorBkg: dark ? '#2c2c2a' : '#f7f7f5',
+    actorTextColor: dark ? '#c2c0b6' : '#3d3d3a',
+    actorLineColor: dark ? '#9c9a92' : '#73726c',
+    signalColor: dark ? '#c2c0b6' : '#3d3d3a',
+    signalTextColor: dark ? '#c2c0b6' : '#3d3d3a',
+    labelBoxBkgColor: dark ? '#2c2c2a' : '#f7f7f5',
+    labelBoxBorderColor: dark ? '#9c9a92' : '#73726c',
+    labelTextColor: dark ? '#c2c0b6' : '#3d3d3a',
+    loopTextColor: dark ? '#c2c0b6' : '#3d3d3a',
+    noteBorderColor: dark ? '#9c9a92' : '#73726c',
+    noteBkgColor: dark ? '#3a3a38' : '#f1efe8',
+    noteTextColor: dark ? '#c2c0b6' : '#3d3d3a',
+    activationBorderColor: dark ? '#9c9a92' : '#73726c',
+    activationBkgColor: dark ? '#3a3a38' : '#e6f1fb',
+    sequenceNumberColor: dark ? '#c2c0b6' : '#3d3d3a',
+  },
+  sequence: {
+    mirrorActors: false,
+    messageAlign: 'center',
+  }
+});
+
+const diagram = `sequenceDiagram
+    autonumber
+    actor Marcus
+    participant UI as UI/Frontend
+    participant AuthCtrl as AuthController
+    participant SpotifyAuth as SpotifyAuthService
+    participant SpotifyAPI as Spotify OAuth
+    participant UserCtrl as UserController
+    participant SpotifyService as SpotifyService
+    participant SpotifyClient as SpotifyClient
+    participant TrackRepo as TrackRepository
+    participant EmbedSvc as EmbeddingService
+    participant VectorSvc as VectorSearchService
+    participant ChromaDB as ChromaDB
+    participant PlaylistCtrl as PlaylistController
+    participant GenSvc as PlaylistGenerationService
+    participant PromptBuilder as PromptBuilder
+    participant LLMSvc as LLMService
+    participant Groq as Groq (Llama 3.1)
+    participant Validator as TrackValidator
+    participant Duration as DurationMatcher
+    participant PlaylistRepo as PlaylistRepository
+    participant TokenRepo as TokenRepository
+    participant UserRepo as UserRepository
+
+    %% ========== STEP 1: AUTHENTICATION ==========
+    rect rgb(240, 240, 235)
+    Note over Marcus,UserRepo: Step 1: First-Time Authentication
+    Marcus->>UI: Opens application
+    UI->>Marcus: Display welcome screen
+    Marcus->>UI: Click "Connect with Spotify"
+    UI->>AuthCtrl: login()
+    AuthCtrl->>SpotifyAuth: authorize_url()
+    SpotifyAuth-->>AuthCtrl: OAuth URL
+    AuthCtrl-->>UI: Redirect to Spotify
+    UI->>SpotifyAPI: Redirect user
+    Marcus->>SpotifyAPI: Login & grant permissions
+    SpotifyAPI->>AuthCtrl: callback(code)
+    AuthCtrl->>SpotifyAuth: get_access_token(code)
+    SpotifyAuth->>SpotifyClient: Exchange code for token
+    SpotifyClient->>SpotifyAPI: POST /api/token
+    SpotifyAPI-->>SpotifyClient: Access & Refresh tokens
+    SpotifyClient-->>SpotifyAuth: Tokens
+    SpotifyAuth->>TokenRepo: save(encrypted_token)
+    TokenRepo->>TokenRepo: Encrypt token
+    TokenRepo-->>SpotifyAuth: Saved
+    SpotifyAuth->>UserRepo: create(user)
+    UserRepo-->>SpotifyAuth: User created
+    SpotifyAuth-->>AuthCtrl: User
+    AuthCtrl-->>UI: Authentication success
+    UI->>Marcus: Redirect to main app
+    end
+
+    %% ========== STEP 2: LIBRARY SYNC ==========
+    rect rgb(230, 245, 255)
+    Note over Marcus,UserRepo: Step 2: Library Loading (Sync)
+    UI->>Marcus: "Syncing your Spotify library..."
+    UI->>UserCtrl: sync_library(user_id)
+    UserCtrl->>SpotifyService: get_user_playlists(token)
+    SpotifyService->>SpotifyClient: get_playlists(token)
+    SpotifyClient->>SpotifyAPI: GET /me/playlists
+    SpotifyAPI-->>SpotifyClient: 50 playlists
+    SpotifyClient-->>SpotifyService: Playlists
+    
+    loop For each playlist
+        SpotifyService->>SpotifyClient: get_tracks(playlist_id)
+        SpotifyClient->>SpotifyAPI: GET /playlists/{id}/tracks
+        SpotifyAPI-->>SpotifyClient: Tracks
+        SpotifyClient-->>SpotifyService: Tracks
+    end
+    
+    SpotifyService->>SpotifyClient: get_audio_features(track_ids)
+    SpotifyClient->>SpotifyAPI: GET /audio-features
+    SpotifyAPI-->>SpotifyClient: Audio features (energy, valence, etc.)
+    SpotifyClient-->>SpotifyService: Audio features
+    
+    SpotifyService->>TrackRepo: bulk_create(5000 tracks)
+    TrackRepo-->>SpotifyService: Tracks saved
+    
+    loop For each track
+        SpotifyService->>EmbedSvc: encode_track(track)
+        EmbedSvc-->>SpotifyService: Vector embedding
+        SpotifyService->>VectorSvc: add_track(track, vector)
+        VectorSvc->>ChromaDB: add_embeddings()
+        ChromaDB-->>VectorSvc: Stored
+        VectorSvc-->>SpotifyService: Added
+    end
+    
+    SpotifyService-->>UserCtrl: Library synced
+    UserCtrl-->>UI: Success
+    UI->>Marcus: "Library synced: 5,000 tracks from 50 playlists ready"
+    end
+
+    %% ========== STEP 3-4: USER INPUT & REQUEST PROCESSING ==========
+    rect rgb(240, 250, 240)
+    Note over Marcus,UserRepo: Step 3-4: User Input & Request Processing
+    Marcus->>UI: Enter "45-min jazzy, mellow tracks for evening"
+    Marcus->>UI: Click "Generate Playlist"
+    UI->>Marcus: "Creating your playlist..."
+    UI->>PlaylistCtrl: generate_playlist(user_id, request_text)
+    PlaylistCtrl->>GenSvc: generate(user_id, request)
+    end
+
+    %% ========== STEP 5: RAG RETRIEVAL ==========
+    rect rgb(255, 245, 230)
+    Note over Marcus,UserRepo: Step 5a: RAG - Retrieve Relevant Tracks
+    GenSvc->>EmbedSvc: encode_query("45-min jazzy mellow...")
+    EmbedSvc-->>GenSvc: Query vector
+    GenSvc->>VectorSvc: search(query_vector, n=1000)
+    VectorSvc->>ChromaDB: query(vectors, n=1000)
+    ChromaDB-->>VectorSvc: Top 1000 similar tracks
+    VectorSvc-->>GenSvc: Retrieved tracks
+    GenSvc->>TrackRepo: get_by_ids(track_ids)
+    TrackRepo-->>GenSvc: Full track details (500-1000 tracks)
+    end
+
+    %% ========== STEP 5: LLM GENERATION ==========
+    rect rgb(250, 240, 255)
+    Note over Marcus,UserRepo: Step 5b: LLM - Generate Playlist
+    GenSvc->>PromptBuilder: build(request, retrieved_tracks)
+    PromptBuilder-->>GenSvc: Formatted prompt
+    GenSvc->>LLMSvc: generate(prompt)
+    LLMSvc->>Groq: complete(prompt, model="llama-3.1-70b")
+    Note over Groq: Analyzes 500-1000 tracks<br/>Selects 12 best matches<br/>Ensures ~45 min duration
+    Groq-->>LLMSvc: JSON: [track_id_1, track_id_2, ...]
+    LLMSvc->>LLMSvc: parse_response(json)
+    LLMSvc-->>GenSvc: List of 12 track IDs
+    end
+
+    %% ========== STEP 6: VALIDATION ==========
+    rect rgb(255, 240, 240)
+    Note over Marcus,UserRepo: Step 6: Validation & Display
+    GenSvc->>Validator: validate(track_ids, user_library)
+    Validator->>TrackRepo: get_by_ids(track_ids)
+    TrackRepo-->>Validator: Track objects
+    Validator-->>GenSvc: All tracks valid ✓
+    
+    GenSvc->>Duration: check_duration(tracks, target=45, tolerance=15)
+    Duration-->>GenSvc: Duration: 46 min (within tolerance) ✓
+    
+    GenSvc->>PlaylistRepo: create(playlist)
+    PlaylistRepo-->>GenSvc: Playlist created
+    GenSvc->>PlaylistRepo: add_tracks(playlist_id, track_ids)
+    PlaylistRepo-->>GenSvc: Tracks added
+    
+    GenSvc-->>PlaylistCtrl: Playlist with 12 tracks
+    PlaylistCtrl-->>UI: Playlist data
+    UI->>Marcus: Display "Your Evening Jazz Playlist (46 min)"
+    end
+
+    %% ========== STEP 7: SAVE TO SPOTIFY ==========
+    rect rgb(230, 255, 230)
+    Note over Marcus,UserRepo: Step 7: Save to Spotify
+    Marcus->>UI: Click "Save to Spotify"
+    UI->>PlaylistCtrl: save_to_spotify(playlist)
+    PlaylistCtrl->>SpotifyService: create_playlist(user_id, name)
+    SpotifyService->>SpotifyClient: create_playlist(user_id, "Evening Jazz")
+    SpotifyClient->>SpotifyAPI: POST /users/{id}/playlists
+    SpotifyAPI-->>SpotifyClient: Playlist created
+    SpotifyClient-->>SpotifyService: Spotify playlist ID
+    
+    loop For each track
+        SpotifyService->>SpotifyClient: add_track_to_playlist()
+        SpotifyClient->>SpotifyAPI: POST /playlists/{id}/tracks
+        SpotifyAPI-->>SpotifyClient: Track added
+        SpotifyClient-->>SpotifyService: Success
+    end
+    
+    SpotifyService-->>PlaylistCtrl: Playlist saved
+    PlaylistCtrl-->>UI: Success
+    UI->>Marcus: "Playlist 'Evening Jazz' created in your Spotify account"
+    end
+`;
+
+const { svg } = await mermaid.render('sequence-diagram-svg', diagram);
+document.getElementById('diagram-content').innerHTML = svg;
+
+// Pan & Zoom Implementation
+let scale = 1;
+let translateX = 0;
+let translateY = 0;
+let isPanning = false;
+let startX, startY;
+
+const wrapper = document.getElementById('diagram-wrapper');
+const content = document.getElementById('diagram-content');
+const zoomInBtn = document.getElementById('zoom-in');
+const zoomOutBtn = document.getElementById('zoom-out');
+const zoomResetBtn = document.getElementById('zoom-reset');
+
+function updateTransform() {
+  content.style.transform = `translate(${translateX}px, ${translateY}px) scale(${scale})`;
+}
+
+// Zoom controls
+zoomInBtn.addEventListener('click', () => {
+  scale = Math.min(scale * 1.2, 3);
+  updateTransform();
+});
+
+zoomOutBtn.addEventListener('click', () => {
+  scale = Math.max(scale / 1.2, 0.5);
+  updateTransform();
+});
+
+zoomResetBtn.addEventListener('click', () => {
+  scale = 1;
+  translateX = 0;
+  translateY = 0;
+  updateTransform();
+});
+
+// Mouse wheel zoom
+wrapper.addEventListener('wheel', (e) => {
+  e.preventDefault();
+  const delta = e.deltaY > 0 ? 0.9 : 1.1;
+  const newScale = Math.min(Math.max(scale * delta, 0.5), 3);
+  
+  // Zoom toward mouse cursor
+  const rect = wrapper.getBoundingClientRect();
+  const x = e.clientX - rect.left;
+  const y = e.clientY - rect.top;
+  
+  const scaleChange = newScale / scale;
+  translateX = x - (x - translateX) * scaleChange;
+  translateY = y - (y - translateY) * scaleChange;
+  scale = newScale;
+  
+  updateTransform();
+});
+
+// Pan with mouse drag
+wrapper.addEventListener('mousedown', (e) => {
+  isPanning = true;
+  startX = e.clientX - translateX;
+  startY = e.clientY - translateY;
+  wrapper.style.cursor = 'grabbing';
+});
+
+document.addEventListener('mousemove', (e) => {
+  if (!isPanning) return;
+  translateX = e.clientX - startX;
+  translateY = e.clientY - startY;
+  updateTransform();
+});
+
+document.addEventListener('mouseup', () => {
+  isPanning = false;
+  wrapper.style.cursor = 'grab';
+});
+
+// Touch support for mobile
+let touchStartDistance = 0;
+let touchStartScale = 1;
+
+wrapper.addEventListener('touchstart', (e) => {
+  if (e.touches.length === 2) {
+    const dx = e.touches[0].clientX - e.touches[1].clientX;
+    const dy = e.touches[0].clientY - e.touches[1].clientY;
+    touchStartDistance = Math.sqrt(dx * dx + dy * dy);
+    touchStartScale = scale;
+  } else if (e.touches.length === 1) {
+    isPanning = true;
+    startX = e.touches[0].clientX - translateX;
+    startY = e.touches[0].clientY - translateY;
+  }
+});
+
+wrapper.addEventListener('touchmove', (e) => {
+  e.preventDefault();
+  if (e.touches.length === 2) {
+    const dx = e.touches[0].clientX - e.touches[1].clientX;
+    const dy = e.touches[0].clientY - e.touches[1].clientY;
+    const distance = Math.sqrt(dx * dx + dy * dy);
+    scale = Math.min(Math.max(touchStartScale * (distance / touchStartDistance), 0.5), 3);
+    updateTransform();
+  } else if (e.touches.length === 1 && isPanning) {
+    translateX = e.touches[0].clientX - startX;
+    translateY = e.touches[0].clientY - startY;
+    updateTransform();
+  }
+});
+
+wrapper.addEventListener('touchend', () => {
+  isPanning = false;
+});
+</script>
+
+<div style="margin-top: 1rem; padding: 1rem; background: var(--color-background-info); border-radius: var(--border-radius-lg);">
+  <p style="font-size: 13px; margin: 0; line-height: 1.6; color: var(--color-text-info);">
+    <strong>Navigation:</strong> Use mouse wheel to zoom, click and drag to pan. Buttons: + zoom in, − zoom out, ⟲ reset. Touch devices: pinch to zoom, drag to pan.
+  </p>
+</div>
+
+<div style="margin-top: 1.5rem; padding: 1.5rem; background: var(--color-background-secondary); border-radius: var(--border-radius-lg);">
+  <h3 style="font-size: 16px; font-weight: 500; margin: 0 0 1rem 0;">Sequence Flow Summary</h3>
+  
+  <div style="display: grid; gap: 1rem;">
+    <div>
+      <p style="font-size: 14px; font-weight: 500; margin: 0 0 0.5rem 0; color: var(--color-text-secondary);">Step 1: Authentication (Steps 1-22)</p>
+      <p style="font-size: 13px; margin: 0; line-height: 1.6;">Marcus authenticates via Spotify OAuth. System exchanges authorization code for tokens, encrypts and stores refresh token, creates user record.</p>
+    </div>
+    
+    <div>
+      <p style="font-size: 14px; font-weight: 500; margin: 0 0 0.5rem 0; color: var(--color-text-secondary);">Step 2: Library Sync (Steps 23-41)</p>
+      <p style="font-size: 13px; margin: 0; line-height: 1.6;">System fetches all 50 playlists and 5,000 tracks from Spotify API, retrieves audio features, stores tracks in SQLite, generates embeddings using sentence-transformers, and indexes in ChromaDB for vector search.</p>
+    </div>
+    
+    <div>
+      <p style="font-size: 14px; font-weight: 500; margin: 0 0 0.5rem 0; color: var(--color-text-secondary);">Step 3-4: Input Processing (Steps 42-45)</p>
+      <p style="font-size: 13px; margin: 0; line-height: 1.6;">Marcus enters natural language request, UI initiates playlist generation through PlaylistController.</p>
+    </div>
+    
+    <div>
+      <p style="font-size: 14px; font-weight: 500; margin: 0 0 0.5rem 0; color: var(--color-text-secondary);">Step 5a: RAG Retrieval (Steps 46-51)</p>
+      <p style="font-size: 13px; margin: 0; line-height: 1.6;">System encodes user query into vector, performs similarity search in ChromaDB, retrieves top 500-1000 most relevant tracks from user's library based on semantic similarity.</p>
+    </div>
+    
+    <div>
+      <p style="font-size: 14px; font-weight: 500; margin: 0 0 0.5rem 0; color: var(--color-text-secondary);">Step 5b: LLM Generation (Steps 52-57)</p>
+      <p style="font-size: 13px; margin: 0; line-height: 1.6;">PromptBuilder formats retrieved tracks into prompt. LLMService sends to Groq's Llama 3.1 70B. LLM analyzes tracks, selects 12 best matches ensuring ~45 min duration, returns JSON with track IDs.</p>
+    </div>
+    
+    <div>
+      <p style="font-size: 14px; font-weight: 500; margin: 0 0 0.5rem 0; color: var(--color-text-secondary);">Step 6: Validation & Display (Steps 58-67)</p>
+      <p style="font-size: 13px; margin: 0; line-height: 1.6;">TrackValidator confirms all track IDs exist in library. DurationMatcher checks total duration is within ±15 min tolerance. PlaylistRepository creates playlist record. UI displays results to Marcus.</p>
+    </div>
+    
+    <div>
+      <p style="font-size: 14px; font-weight: 500; margin: 0 0 0.5rem 0; color: var(--color-text-secondary);">Step 7: Save to Spotify (Steps 68-77)</p>
+      <p style="font-size: 13px; margin: 0; line-height: 1.6;">Marcus approves playlist. System creates new playlist in Spotify via API, adds all 12 tracks, confirms success to user.</p>
+    </div>
+  </div>
+</div>
