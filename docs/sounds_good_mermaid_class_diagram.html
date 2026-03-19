@@ -1,0 +1,314 @@
+<style>
+#class-diagram svg.classDiagram .divider path { stroke-opacity: 0.5; }
+#class-diagram svg.classDiagram .row-rect-odd path,
+#class-diagram svg.classDiagram .row-rect-odd rect,
+#class-diagram svg.classDiagram .row-rect-even path,
+#class-diagram svg.classDiagram .row-rect-even rect { stroke: none !important; }
+</style>
+<div id="class-diagram"></div>
+<script type="module">
+import mermaid from 'https://esm.sh/mermaid@11/dist/mermaid.esm.min.mjs';
+const dark = matchMedia('(prefers-color-scheme: dark)').matches;
+await document.fonts.ready;
+mermaid.initialize({
+  startOnLoad: false,
+  theme: 'base',
+  fontFamily: '"Anthropic Sans", sans-serif',
+  themeVariables: {
+    darkMode: dark,
+    fontSize: '13px',
+    fontFamily: '"Anthropic Sans", sans-serif',
+    lineColor: dark ? '#9c9a92' : '#73726c',
+    textColor: dark ? '#c2c0b6' : '#3d3d3a',
+    primaryColor: dark ? '#2c2c2a' : '#f7f7f5',
+    primaryBorderColor: dark ? '#9c9a92' : '#73726c',
+  },
+});
+
+const diagram = `classDiagram
+    %% ==================== CONTROLLERS ====================
+    class AuthController {
+        +login() void
+        +callback(code: string) User
+    }
+    
+    class PlaylistController {
+        +generate_playlist(user_id: UUID, request_text: string) Playlist
+        +save_to_spotify(playlist: Playlist) bool
+    }
+    
+    class UserController {
+        +get_user(id: UUID) User
+        +sync_library(user_id: UUID) void
+    }
+
+    %% ==================== SERVICES ====================
+    class SpotifyAuthService {
+        -client: SpotifyClient
+        -token_repo: TokenRepository
+        +authorize_url() string
+        +get_access_token(code: string) Token
+        +refresh_token(user_id: UUID) Token
+    }
+    
+    class SpotifyService {
+        -client: SpotifyClient
+        -track_repo: TrackRepository
+        +get_user_playlists(token: string) List~Playlist~
+        +get_playlist_tracks(playlist_id: string) List~Track~
+        +get_audio_features(track_ids: List) Dict
+        +create_playlist(user_id: UUID, name: string) string
+    }
+    
+    class LLMService {
+        -client: LLMClient
+        +generate(prompt: string) Dict
+        +parse_response(json: string) List~TrackID~
+    }
+    
+    class EmbeddingService {
+        -model: SentenceTransformer
+        +encode_track(track: Track) Vector
+        +encode_query(text: string) Vector
+    }
+    
+    class PlaylistGenerationService {
+        -llm_service: LLMService
+        -vector_service: VectorSearchService
+        -track_repo: TrackRepository
+        -validator: TrackValidator
+        -matcher: DurationMatcher
+        +generate(user_id: UUID, request: string) Playlist
+        +retrieve_tracks(query_vector: Vector) List~Track~
+        +validate_response(track_ids: List, library: List) bool
+        +match_duration(tracks: List, target: int) bool
+        +retry_with_feedback(error: string) Playlist
+    }
+    
+    class VectorSearchService {
+        -client: ChromaDBClient
+        +add_track(track: Track, vector: Vector) void
+        +search(query_vector: Vector, n: int) List~Track~
+        +clear_user_tracks(user_id: UUID) void
+    }
+
+    %% ==================== REPOSITORIES ====================
+    class UserRepository {
+        -db: Session
+        +create(user: User) User
+        +get_by_id(id: UUID) User
+        +update(user: User) User
+    }
+    
+    class TrackRepository {
+        -db: Session
+        +bulk_create(tracks: List~Track~) void
+        +get_by_user(user_id: UUID) List~Track~
+        +get_by_ids(ids: List~UUID~) List~Track~
+        +delete_old(user_id: UUID) void
+    }
+    
+    class PlaylistRepository {
+        -db: Session
+        +create(playlist: Playlist) Playlist
+        +get_by_user(user_id: UUID) List~Playlist~
+        +add_tracks(playlist_id: UUID, track_ids: List) void
+    }
+    
+    class TokenRepository {
+        -db: Session
+        -encryptor: TokenEncryptor
+        +save(token: SpotifyToken) void
+        +get_by_user(user_id: UUID) SpotifyToken
+        +delete(user_id: UUID) void
+    }
+
+    %% ==================== MODELS ====================
+    class User {
+        +UUID id
+        +string spotify_id
+        +datetime created_at
+    }
+    
+    class Track {
+        +UUID id
+        +UUID user_id
+        +string spotify_track_id
+        +string name
+        +string artist
+        +int duration
+        +Dict audio_features
+        +datetime cached_at
+    }
+    
+    class Playlist {
+        +UUID id
+        +UUID user_id
+        +string name
+        +datetime created_at
+    }
+    
+    class PlaylistTrack {
+        +UUID playlist_id
+        +UUID track_id
+        +int position
+    }
+    
+    class SpotifyToken {
+        +UUID id
+        +UUID user_id
+        +bytes encrypted_refresh_token
+        +datetime expires_at
+    }
+
+    %% ==================== UTILITIES ====================
+    class PromptBuilder {
+        +build(request: string, tracks: List~Track~) string
+        +format_tracks(tracks: List~Track~) string
+    }
+    
+    class TrackValidator {
+        +validate(track_ids: List, library: List~Track~) ValidationResult
+        +get_invalid_ids(track_ids: List, library: List) List
+    }
+    
+    class DurationMatcher {
+        +check_duration(tracks: List~Track~, target: int, tolerance: int) bool
+        +calculate_total(tracks: List~Track~) int
+    }
+    
+    class TokenEncryptor {
+        -key: bytes
+        +encrypt(token: string) bytes
+        +decrypt(data: bytes) string
+    }
+
+    %% ==================== CLIENTS ====================
+    class SpotifyClient {
+        -base_url: string
+        +get_playlists(token: string) Response
+        +get_tracks(playlist_id: string, token: string) Response
+        +get_audio_features(track_ids: List, token: string) Response
+        +create_playlist(user_id: string, name: string, token: string) Response
+    }
+    
+    class LLMClient {
+        -api_key: string
+        -model: string
+        +complete(prompt: string, temperature: float) Response
+    }
+    
+    class ChromaDBClient {
+        -collection_name: string
+        +create_collection(name: string) Collection
+        +add_embeddings(ids: List, embeddings: List, metadata: List) void
+        +query(query_vectors: List, n: int) QueryResult
+    }
+
+    %% ==================== RELATIONSHIPS ====================
+    
+    %% Controllers depend on Services
+    AuthController --> SpotifyAuthService
+    PlaylistController --> PlaylistGenerationService
+    PlaylistController --> SpotifyService
+    UserController --> SpotifyService
+    
+    %% Service dependencies
+    SpotifyAuthService --> SpotifyClient
+    SpotifyAuthService --> TokenRepository
+    SpotifyService --> SpotifyClient
+    SpotifyService --> TrackRepository
+    LLMService --> LLMClient
+    PlaylistGenerationService --> LLMService
+    PlaylistGenerationService --> VectorSearchService
+    PlaylistGenerationService --> TrackRepository
+    PlaylistGenerationService --> PlaylistRepository
+    PlaylistGenerationService --> PromptBuilder
+    PlaylistGenerationService --> TrackValidator
+    PlaylistGenerationService --> DurationMatcher
+    VectorSearchService --> ChromaDBClient
+    SpotifyService --> EmbeddingService
+    VectorSearchService --> EmbeddingService
+    
+    %% Repository dependencies
+    UserRepository --> User
+    TrackRepository --> Track
+    PlaylistRepository --> Playlist
+    PlaylistRepository --> PlaylistTrack
+    TokenRepository --> SpotifyToken
+    TokenRepository --> TokenEncryptor
+    
+    %% Model relationships
+    Track --> User : belongs_to
+    Playlist --> User : belongs_to
+    PlaylistTrack --> Playlist : belongs_to
+    PlaylistTrack --> Track : belongs_to
+    SpotifyToken --> User : belongs_to
+`;
+
+const { svg } = await mermaid.render('class-diagram-svg', diagram);
+document.getElementById('class-diagram').innerHTML = svg;
+
+// Round entity box corners
+document.querySelectorAll('#class-diagram svg.classDiagram .node').forEach(node => {
+  const firstPath = node.querySelector('path[d]');
+  if (!firstPath) return;
+  const d = firstPath.getAttribute('d');
+  const nums = d.match(/-?[\d.]+/g)?.map(Number);
+  if (!nums || nums.length < 8) return;
+  const xs = [nums[0], nums[2], nums[4], nums[6]];
+  const ys = [nums[1], nums[3], nums[5], nums[7]];
+  const x = Math.min(...xs), y = Math.min(...ys);
+  const w = Math.max(...xs) - x, h = Math.max(...ys) - y;
+  const rect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+  rect.setAttribute('x', x); rect.setAttribute('y', y);
+  rect.setAttribute('width', w); rect.setAttribute('height', h);
+  rect.setAttribute('rx', '8');
+  for (const a of ['fill', 'stroke', 'stroke-width', 'class', 'style']) {
+    if (firstPath.hasAttribute(a)) rect.setAttribute(a, firstPath.getAttribute(a));
+  }
+  firstPath.replaceWith(rect);
+});
+</script>
+
+<div style="margin-top: 2rem; padding: 1.5rem; background: var(--color-background-secondary); border-radius: var(--border-radius-lg);">
+  <h3 style="font-size: 16px; font-weight: 500; margin: 0 0 1rem 0;">Architecture Summary</h3>
+  
+  <div style="display: grid; gap: 1rem;">
+    <div>
+      <p style="font-size: 14px; font-weight: 500; margin: 0 0 0.5rem 0; color: var(--color-text-secondary);">Controllers (3)</p>
+      <p style="font-size: 13px; margin: 0; line-height: 1.6;">FastAPI route handlers for authentication, playlist generation, and user management</p>
+    </div>
+    
+    <div>
+      <p style="font-size: 14px; font-weight: 500; margin: 0 0 0.5rem 0; color: var(--color-text-secondary);">Services (6)</p>
+      <p style="font-size: 13px; margin: 0; line-height: 1.6;">Business logic layer: Spotify integration, LLM communication, RAG-based track retrieval, and playlist generation orchestration</p>
+    </div>
+    
+    <div>
+      <p style="font-size: 14px; font-weight: 500; margin: 0 0 0.5rem 0; color: var(--color-text-secondary);">Repositories (4)</p>
+      <p style="font-size: 13px; margin: 0; line-height: 1.6;">Data access layer using SQLAlchemy ORM for Users, Tracks, Playlists, and encrypted Spotify tokens</p>
+    </div>
+    
+    <div>
+      <p style="font-size: 14px; font-weight: 500; margin: 0 0 0.5rem 0; color: var(--color-text-secondary);">Models (5)</p>
+      <p style="font-size: 13px; margin: 0; line-height: 1.6;">SQLAlchemy entities stored in SQLite with 24-hour cache expiration for track metadata</p>
+    </div>
+    
+    <div>
+      <p style="font-size: 14px; font-weight: 500; margin: 0 0 0.5rem 0; color: var(--color-text-secondary);">Utilities (4)</p>
+      <p style="font-size: 13px; margin: 0; line-height: 1.6;">Helpers for prompt construction, track validation, duration matching (±15 min tolerance), and token encryption</p>
+    </div>
+    
+    <div>
+      <p style="font-size: 14px; font-weight: 500; margin: 0 0 0.5rem 0; color: var(--color-text-secondary);">Clients (3)</p>
+      <p style="font-size: 13px; margin: 0; line-height: 1.6;">External API wrappers: Spotify Web API, Llama 3.1 70B via Groq, ChromaDB for vector search</p>
+    </div>
+  </div>
+</div>
+
+<div style="margin-top: 1.5rem; padding: 1rem; background: var(--color-background-info); border-radius: var(--border-radius-lg);">
+  <p style="font-size: 13px; margin: 0; line-height: 1.6; color: var(--color-text-info);">
+    <strong>RAG Pipeline:</strong> User query → EmbeddingService (sentence-transformers) → VectorSearchService → ChromaDB retrieves ~500-1000 relevant tracks → PromptBuilder formats for LLM → LLMService (Llama 3.1 70B) → JSON track IDs → TrackValidator ensures all exist in library → retry with feedback if invalid
+  </p>
+</div>
