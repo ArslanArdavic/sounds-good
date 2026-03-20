@@ -37,7 +37,7 @@
 - **Database:** SQLite (development), PostgreSQL (production)
 - **Vector Database:** ChromaDB 0.4+
 - **Embeddings:** sentence-transformers (all-MiniLM-L6-v2)
-- **LLM API:** Groq (Llama 3.1 70B)
+- **LLM API:** Groq (Llama 3.3 70B — model ID configurable; see Groq deprecations)
 - **HTTP Client:** httpx (async)
 - **Validation:** Pydantic V2
 - **Security:** cryptography (Fernet for token encryption)
@@ -394,7 +394,7 @@ sounds-good/
      - Coordinate RAG retrieval
      - Build and send LLM prompt
      - Validate response
-     - Retry with feedback if needed (max 3 attempts)
+     - Retry with feedback if needed (max 2 attempts by default; configurable)
      - Create playlist record
 
 #### Frontend Tasks:

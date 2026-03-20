@@ -451,7 +451,7 @@ print(f'Search latency: {elapsed*1000:.1f} ms, results: {len(result)}')
 | Item | Notes |
 |---|---|
 | No reranking | ChromaDB distance ordering is used directly; cross-encoder reranking deferred |
-| `PlaylistGenerationService` is retrieval-only | LLM prompt building, response parsing, and track validation will be added in Phase 4 |
+| ~~`PlaylistGenerationService` is retrieval-only~~ | **Phase 4 (Week 5)** adds `generate_playlist` — see [`week5_setup_guide.md`](week5_setup_guide.md) |
 | `SearchController` creates a new service per request | Acceptable for dev; consider FastAPI dependency injection in production |
 | Audio-feature filters are post-retrieval | Large libraries may benefit from pre-filtering in ChromaDB metadata; deferred |
 | Config settings not yet wired into service construction | `vector_search_default_n` and `vector_search_max_distance` are available but not auto-injected; wire in Phase 4 orchestration |

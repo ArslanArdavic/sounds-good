@@ -6,11 +6,17 @@ from unittest.mock import MagicMock
 
 import pytest
 
+from src.middleware.error_handler import AppError
+from src.models.user import User
+from src.repositories.playlist_repository import PlaylistRepository
+from src.repositories.track_repository import TrackRepository
+from src.services.llm_service import PlaylistLLMOutput
 from src.services.playlist_generation_service import (
     PlaylistGenerationService,
     _matches_filters,
     _parse_audio_features,
 )
+from src.services.prompt_builder import PromptBuilder
 
 
 def _make_track(
@@ -50,11 +56,24 @@ def mock_track_repo():
 
 
 @pytest.fixture
+def mock_llm():
+    return MagicMock()
+
+
+@pytest.fixture
 def service(mock_vector, mock_track_repo):
     return PlaylistGenerationService(
         vector_search=mock_vector,
         track_repo=mock_track_repo,
     )
+
+
+@pytest.fixture
+def user(db):
+    u = User(spotify_id="pgs_user")
+    db.add(u)
+    db.flush()
+    return u
 
 
 class TestRetrieveTracks:
@@ -133,6 +152,150 @@ class TestParseAudioFeatures:
 
     def test_returns_none_for_invalid_json(self):
         assert _parse_audio_features("not json") is None
+
+
+class TestGeneratePlaylist:
+    def test_raises_when_no_candidates(self, mock_vector, mock_track_repo, mock_llm):
+        mock_vector.search.return_value = []
+        svc = PlaylistGenerationService(
+            vector_search=mock_vector,
+            track_repo=mock_track_repo,
+            llm_service=mock_llm,
+            playlist_repo=MagicMock(),
+            prompt_builder=PromptBuilder(),
+        )
+        with pytest.raises(AppError) as exc:
+            svc.generate_playlist(MagicMock(), uuid.uuid4(), "anything")
+        assert exc.value.error_code == "no_candidates"
+
+    def test_success_persists_playlist(self, db, user, mock_vector, mock_llm):
+        tid = "tid00000000000000000001"
+        tracks = TrackRepository().bulk_upsert(
+            db,
+            user.id,
+            [
+                {
+                    "spotify_track_id": tid,
+                    "name": "Long",
+                    "artist": "Artist",
+                    "duration_ms": 45 * 60 * 1000,
+                    "audio_features": None,
+                }
+            ],
+        )
+        db.flush()
+        mock_vector.search.return_value = [_search_result(tid)]
+        mock_llm.generate_playlist_output.return_value = PlaylistLLMOutput(
+            name="Sunday",
+            track_ids=[tid],
+        )
+        svc = PlaylistGenerationService(
+            vector_search=mock_vector,
+            track_repo=TrackRepository(),
+            llm_service=mock_llm,
+            playlist_repo=PlaylistRepository(),
+            prompt_builder=PromptBuilder(),
+        )
+        result = svc.generate_playlist(db, user.id, "about 45 minutes of calm music")
+        assert result.name == "Sunday"
+        assert len(result.playlist_tracks) == 1
+
+    def test_drops_invalid_ids_keeps_valid_without_retry(self, db, user, mock_vector, mock_llm):
+        tid = "tid00000000000000000004"
+        TrackRepository().bulk_upsert(
+            db,
+            user.id,
+            [
+                {
+                    "spotify_track_id": tid,
+                    "name": "Long",
+                    "artist": "Artist",
+                    "duration_ms": 45 * 60 * 1000,
+                    "audio_features": None,
+                }
+            ],
+        )
+        db.flush()
+        mock_vector.search.return_value = [_search_result(tid)]
+        mock_llm.generate_playlist_output.return_value = PlaylistLLMOutput(
+            name="Mixed",
+            track_ids=["not_in_list", tid],
+        )
+        svc = PlaylistGenerationService(
+            vector_search=mock_vector,
+            track_repo=TrackRepository(),
+            llm_service=mock_llm,
+            playlist_repo=PlaylistRepository(),
+            prompt_builder=PromptBuilder(),
+        )
+        result = svc.generate_playlist(db, user.id, "45 minutes")
+        assert result.name == "Mixed"
+        assert len(result.playlist_tracks) == 1
+        assert mock_llm.generate_playlist_output.call_count == 1
+
+    def test_retries_on_invalid_ids_then_succeeds(self, db, user, mock_vector, mock_llm):
+        tid = "tid00000000000000000002"
+        TrackRepository().bulk_upsert(
+            db,
+            user.id,
+            [
+                {
+                    "spotify_track_id": tid,
+                    "name": "Long",
+                    "artist": "Artist",
+                    "duration_ms": 45 * 60 * 1000,
+                    "audio_features": None,
+                }
+            ],
+        )
+        db.flush()
+        mock_vector.search.return_value = [_search_result(tid)]
+        mock_llm.generate_playlist_output.side_effect = [
+            PlaylistLLMOutput(name="Bad", track_ids=["not_in_list"]),
+            PlaylistLLMOutput(name="Good", track_ids=[tid]),
+        ]
+        svc = PlaylistGenerationService(
+            vector_search=mock_vector,
+            track_repo=TrackRepository(),
+            llm_service=mock_llm,
+            playlist_repo=PlaylistRepository(),
+            prompt_builder=PromptBuilder(),
+        )
+        result = svc.generate_playlist(db, user.id, "45 minutes")
+        assert result.name == "Good"
+        assert mock_llm.generate_playlist_output.call_count == 2
+
+    def test_exhausts_attempts_raises(self, db, user, mock_vector, mock_llm):
+        tid = "tid00000000000000000003"
+        TrackRepository().bulk_upsert(
+            db,
+            user.id,
+            [
+                {
+                    "spotify_track_id": tid,
+                    "name": "Long",
+                    "artist": "Artist",
+                    "duration_ms": 45 * 60 * 1000,
+                    "audio_features": None,
+                }
+            ],
+        )
+        db.flush()
+        mock_vector.search.return_value = [_search_result(tid)]
+        mock_llm.generate_playlist_output.return_value = PlaylistLLMOutput(
+            name="X",
+            track_ids=["never_valid"],
+        )
+        svc = PlaylistGenerationService(
+            vector_search=mock_vector,
+            track_repo=TrackRepository(),
+            llm_service=mock_llm,
+            playlist_repo=PlaylistRepository(),
+            prompt_builder=PromptBuilder(),
+        )
+        with pytest.raises(AppError) as exc:
+            svc.generate_playlist(db, user.id, "45 minutes")
+        assert exc.value.error_code == "playlist_generation_failed"
 
 
 class TestMatchesFilters:

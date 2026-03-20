@@ -81,6 +81,38 @@ class TestUpsert:
         assert pl_a.id != pl_b.id
 
 
+class TestCreateAiPlaylist:
+    def test_creates_playlist_without_spotify_id(self, db, user, repo):
+        pl = repo.create_ai_playlist(db, user.id, "AI Mix")
+        assert pl.spotify_playlist_id is None
+        assert pl.name == "AI Mix"
+        assert pl.user_id == user.id
+
+
+class TestGetWithTracks:
+    def test_loads_nested_tracks(self, db, user, repo, track_repo):
+        tracks = track_repo.bulk_upsert(
+            db,
+            user.id,
+            [
+                {
+                    "spotify_track_id": "tid0000000000000000001",
+                    "name": "One",
+                    "artist": "A",
+                    "duration_ms": 60_000,
+                    "audio_features": None,
+                }
+            ],
+        )
+        pl = repo.create_ai_playlist(db, user.id, "PL")
+        repo.add_tracks(db, pl.id, [(tracks[0].id, 1)])
+        loaded = repo.get_with_tracks(db, pl.id)
+        assert loaded is not None
+        assert loaded.name == "PL"
+        assert len(loaded.playlist_tracks) == 1
+        assert loaded.playlist_tracks[0].track.name == "One"
+
+
 class TestAddTracks:
     def test_adds_tracks_with_correct_positions(self, db, user, repo):
         from src.models.playlist import PlaylistTrack

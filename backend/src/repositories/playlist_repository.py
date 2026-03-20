@@ -1,7 +1,7 @@
 """Repository for Playlist and PlaylistTrack CRUD operations."""
 import uuid
 
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, selectinload
 
 from src.models.playlist import Playlist, PlaylistTrack
 
@@ -20,6 +20,28 @@ class PlaylistRepository:
             List of Playlist ORM objects (may be empty).
         """
         return db.query(Playlist).filter(Playlist.user_id == user_id).all()
+
+    def create_ai_playlist(self, db: Session, user_id: uuid.UUID, name: str) -> Playlist:
+        """Create a locally generated playlist (no Spotify playlist id yet)."""
+        playlist = Playlist(
+            user_id=user_id,
+            name=name,
+            spotify_playlist_id=None,
+        )
+        db.add(playlist)
+        db.flush()
+        return playlist
+
+    def get_with_tracks(self, db: Session, playlist_id: uuid.UUID) -> Playlist | None:
+        """Load playlist with ordered playlist_tracks and nested tracks."""
+        return (
+            db.query(Playlist)
+            .options(
+                selectinload(Playlist.playlist_tracks).selectinload(PlaylistTrack.track)
+            )
+            .filter(Playlist.id == playlist_id)
+            .first()
+        )
 
     def upsert(
         self,

@@ -33,7 +33,6 @@ export default function GeneratePage() {
   const [isGenerating, setIsGenerating] = useState(false)
   const [playlist, setPlaylist] = useState<Playlist | null>(null)
   const [error, setError] = useState<string | null>(null)
-
   const handleGenerate = async () => {
     if (!text.trim() || isGenerating) return
     setIsGenerating(true)
@@ -44,14 +43,21 @@ export default function GeneratePage() {
       const { data } = await api.post<Playlist>('/playlist/generate', { text })
       setPlaylist(data)
     } catch (err) {
-      if (axios.isAxiosError(err) && err.response?.status === 501) {
-        setError('Playlist generation is not yet implemented — coming in Phase 4.')
+      if (axios.isAxiosError(err) && err.response?.data) {
+        const data = err.response.data as { message?: string; error?: string }
+        setError(data.message ?? data.error ?? 'Request failed. Please try again.')
       } else {
         setError('Something went wrong. Please try again.')
       }
     } finally {
       setIsGenerating(false)
     }
+  }
+
+  const handleGenerateAnother = () => {
+    setPlaylist(null)
+    setError(null)
+    window.scrollTo({ top: 0, behavior: 'smooth' })
   }
 
   return (
@@ -111,7 +117,9 @@ export default function GeneratePage() {
         )}
 
         {isGenerating && <GeneratingState />}
-        {playlist && <PlaylistResult playlist={playlist} />}
+        {playlist && (
+          <PlaylistResult playlist={playlist} onGenerateAnother={handleGenerateAnother} />
+        )}
         {!isGenerating && !playlist && !error && <EmptyState />}
       </main>
     </div>
@@ -150,13 +158,19 @@ function GeneratingState() {
         ))}
       </div>
       <p className="text-sm" style={{ color: 'var(--text)' }}>
-        Searching your library…
+        Curating your playlist…
       </p>
     </div>
   )
 }
 
-function PlaylistResult({ playlist }: { playlist: Playlist }) {
+function PlaylistResult({
+  playlist,
+  onGenerateAnother,
+}: {
+  playlist: Playlist
+  onGenerateAnother: () => void
+}) {
   const totalMin = Math.round(playlist.total_duration_ms / 60000)
 
   return (
@@ -195,8 +209,26 @@ function PlaylistResult({ playlist }: { playlist: Playlist }) {
         ))}
       </div>
 
-      <button className="mt-4 w-full py-3 rounded-full text-sm font-medium transition-opacity hover:opacity-90 cursor-pointer bg-spotify-green text-white">
-        Save to Spotify
+      <button
+        type="button"
+        disabled
+        title="Saving to Spotify is planned for Phase 5"
+        className="mt-4 w-full py-3 rounded-full text-sm font-medium transition-opacity cursor-not-allowed opacity-50 bg-spotify-green text-white"
+      >
+        Save to Spotify (Phase 5)
+      </button>
+
+      <button
+        type="button"
+        onClick={onGenerateAnother}
+        className="mt-3 w-full py-3 rounded-full text-sm font-medium transition-opacity hover:opacity-90 cursor-pointer"
+        style={{
+          border: '1px solid var(--border)',
+          color: 'var(--text-h)',
+          background: 'transparent',
+        }}
+      >
+        Generate another
       </button>
     </div>
   )
