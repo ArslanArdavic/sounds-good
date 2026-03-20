@@ -19,10 +19,12 @@ def _playlist(pid: str, name: str = "My Playlist") -> dict:
 
 
 def _track_item(tid: str, name: str = "Song", artist: str = "Artist", dur: int = 200_000) -> dict:
+    # /playlists/{id}/items response shape: track data is under "item", not "track"
     return {
-        "track": {
+        "item": {
             "id": tid,
             "name": name,
+            "type": "track",
             "artists": [{"name": artist}],
             "duration_ms": dur,
         }

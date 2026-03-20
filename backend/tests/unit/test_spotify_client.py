@@ -94,7 +94,7 @@ class TestGetPlaylistTracks:
         with patch("src.clients.spotify_client.httpx.AsyncClient", return_value=mock_http):
             await client.get_playlist_tracks("tok", "pl99", offset=100, limit=50)
         call_kwargs = mock_get.call_args
-        assert "pl99/tracks" in call_kwargs.args[0]
+        assert "pl99/items" in call_kwargs.args[0]
         assert call_kwargs.kwargs["params"]["offset"] == 100
         assert call_kwargs.kwargs["params"]["limit"] == 50
 
