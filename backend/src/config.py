@@ -21,6 +21,10 @@ class Settings(BaseSettings):
     chromadb_host: str = "localhost"
     chromadb_port: int = 8001
 
+    # Vector search
+    vector_search_default_n: int = 1000
+    vector_search_max_distance: float | None = None
+
     # Spotify API
     spotify_client_id: str
     spotify_client_secret: str

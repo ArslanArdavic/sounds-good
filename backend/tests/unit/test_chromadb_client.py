@@ -69,14 +69,17 @@ class TestAddDocuments:
 
 
 class TestQuery:
-    def test_returns_metadata_list(self, client):
+    def test_returns_metadata_with_distances(self, client):
         mock_collection = MagicMock()
         mock_collection.query.return_value = {
             "metadatas": [[{"spotify_track_id": "t1"}, {"spotify_track_id": "t2"}]],
             "distances": [[0.1, 0.2]],
         }
         result = client.query(mock_collection, [0.1, 0.2], n_results=10)
-        assert result == [{"spotify_track_id": "t1"}, {"spotify_track_id": "t2"}]
+        assert result == [
+            {"spotify_track_id": "t1", "distance": 0.1},
+            {"spotify_track_id": "t2", "distance": 0.2},
+        ]
 
     def test_passes_n_results_and_includes(self, client):
         mock_collection = MagicMock()

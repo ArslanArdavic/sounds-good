@@ -52,8 +52,20 @@ class EmbeddingService:
         vectors = model.encode(texts, convert_to_numpy=True)
         return [v.tolist() for v in vectors]
 
+    @staticmethod
+    def _normalize_query(text: str, max_length: int = 1000) -> str:
+        """Strip leading/trailing whitespace, collapse internal runs, and truncate."""
+        normalized = " ".join(text.split())
+        if len(normalized) > max_length:
+            normalized = normalized[:max_length]
+        return normalized
+
     def encode_query(self, text: str) -> list[float]:
         """Generate an embedding for a free-text query.
+
+        The input is normalized (whitespace-collapsed, truncated to 1000 chars)
+        before encoding so that trivially different inputs produce identical
+        vectors.
 
         Args:
             text: The user's natural-language playlist description.
@@ -61,6 +73,7 @@ class EmbeddingService:
         Returns:
             Single embedding vector as a list of floats.
         """
+        text = self._normalize_query(text)
         model = self._get_model()
         vector = model.encode([text], convert_to_numpy=True)[0]
         return vector.tolist()

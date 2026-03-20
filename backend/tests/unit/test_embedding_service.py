@@ -86,6 +86,29 @@ class TestEncodeTracks:
         mock_model.encode.assert_not_called()
 
 
+class TestNormalizeQuery:
+    def test_strips_leading_trailing_whitespace(self):
+        assert EmbeddingService._normalize_query("  hello world  ") == "hello world"
+
+    def test_collapses_internal_whitespace(self):
+        assert EmbeddingService._normalize_query("chill   lo-fi\tbeats\n") == "chill lo-fi beats"
+
+    def test_truncates_to_max_length(self):
+        long_text = "a" * 2000
+        assert len(EmbeddingService._normalize_query(long_text)) == 1000
+
+    def test_custom_max_length(self):
+        assert EmbeddingService._normalize_query("hello world", max_length=5) == "hello"
+
+    def test_empty_string_returns_empty(self):
+        assert EmbeddingService._normalize_query("") == ""
+
+    def test_encode_query_normalizes_input(self, service, mock_model):
+        service.encode_query("  upbeat   workout  music  ")
+        texts_passed = mock_model.encode.call_args.args[0]
+        assert texts_passed == ["upbeat workout music"]
+
+
 class TestLazyLoad:
     def test_model_not_loaded_at_init(self):
         svc = EmbeddingService()

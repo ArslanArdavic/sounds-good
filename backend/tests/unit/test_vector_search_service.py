@@ -1,11 +1,11 @@
 """Unit tests for VectorSearchService."""
 import uuid
 from types import SimpleNamespace
-from unittest.mock import MagicMock, call
+from unittest.mock import MagicMock
 
 import pytest
 
-from src.services.vector_search_service import VectorSearchService
+from src.services.vector_search_service import DEFAULT_N_RESULTS, VectorSearchService
 
 
 def _make_track(spotify_track_id: str = "t1", name: str = "Song", artist: str = "Artist"):
@@ -100,26 +100,77 @@ class TestSearch:
             collection, [0.9, 0.8], n_results=50
         )
 
-    def test_returns_spotify_track_ids(self, service, mock_chroma):
+    def test_returns_structured_results(self, service, mock_chroma):
         mock_chroma.query.return_value = [
-            {"spotify_track_id": "t1", "name": "A"},
-            {"spotify_track_id": "t2", "name": "B"},
+            {"spotify_track_id": "t1", "name": "A", "artist": "X", "duration_ms": 100, "distance": 0.1},
+            {"spotify_track_id": "t2", "name": "B", "artist": "Y", "duration_ms": 200, "distance": 0.2},
         ]
         result = service.search(uuid.uuid4(), "test")
-        assert result == ["t1", "t2"]
+        assert len(result) == 2
+        assert result[0]["spotify_track_id"] == "t1"
+        assert result[0]["distance"] == 0.1
+        assert result[1]["spotify_track_id"] == "t2"
 
     def test_filters_metadata_without_spotify_track_id(self, service, mock_chroma):
         mock_chroma.query.return_value = [
-            {"spotify_track_id": "t1"},
-            {"name": "No ID"},
+            {"spotify_track_id": "t1", "distance": 0.1},
+            {"name": "No ID", "distance": 0.2},
         ]
         result = service.search(uuid.uuid4(), "test")
-        assert result == ["t1"]
+        assert len(result) == 1
+        assert result[0]["spotify_track_id"] == "t1"
 
     def test_returns_empty_for_no_results(self, service, mock_chroma):
         mock_chroma.query.return_value = []
         result = service.search(uuid.uuid4(), "test")
         assert result == []
+
+    def test_uses_default_n_results_when_not_specified(self, service, mock_chroma, mock_embeddings):
+        mock_chroma.query.return_value = []
+        service.search(uuid.uuid4(), "test")
+        _, kwargs = mock_chroma.query.call_args
+        assert kwargs["n_results"] == DEFAULT_N_RESULTS
+
+    def test_max_distance_filters_distant_results(self, service, mock_chroma):
+        mock_chroma.query.return_value = [
+            {"spotify_track_id": "t1", "name": "A", "artist": "X", "duration_ms": 100, "distance": 0.1},
+            {"spotify_track_id": "t2", "name": "B", "artist": "Y", "duration_ms": 200, "distance": 0.9},
+        ]
+        result = service.search(uuid.uuid4(), "test", max_distance=0.5)
+        assert len(result) == 1
+        assert result[0]["spotify_track_id"] == "t1"
+
+    def test_constructor_default_n_results_override(self, mock_chroma, mock_embeddings):
+        svc = VectorSearchService(
+            chroma_client=mock_chroma,
+            embedding_service=mock_embeddings,
+            default_n_results=500,
+        )
+        mock_chroma.query.return_value = []
+        svc.search(uuid.uuid4(), "test")
+        _, kwargs = mock_chroma.query.call_args
+        assert kwargs["n_results"] == 500
+
+    def test_constructor_max_distance_used_as_default(self, mock_chroma, mock_embeddings):
+        svc = VectorSearchService(
+            chroma_client=mock_chroma,
+            embedding_service=mock_embeddings,
+            max_distance=0.3,
+        )
+        mock_chroma.query.return_value = [
+            {"spotify_track_id": "t1", "name": "A", "artist": "X", "duration_ms": 100, "distance": 0.2},
+            {"spotify_track_id": "t2", "name": "B", "artist": "Y", "duration_ms": 200, "distance": 0.5},
+        ]
+        result = svc.search(uuid.uuid4(), "test")
+        assert len(result) == 1
+
+    def test_single_result(self, service, mock_chroma):
+        mock_chroma.query.return_value = [
+            {"spotify_track_id": "only", "name": "Solo", "artist": "One", "duration_ms": 180_000, "distance": 0.05},
+        ]
+        result = service.search(uuid.uuid4(), "unique query")
+        assert len(result) == 1
+        assert result[0]["spotify_track_id"] == "only"
 
 
 class TestClearUserTracks:

@@ -25,6 +25,34 @@ class TrackRepository:
         """
         return db.query(Track).filter(Track.user_id == user_id).all()
 
+    def get_by_spotify_ids(
+        self,
+        db: Session,
+        user_id: uuid.UUID,
+        spotify_ids: list[str],
+    ) -> list[Track]:
+        """Fetch tracks by Spotify IDs, preserving the input order.
+
+        IDs not found in the database are silently skipped.
+
+        Args:
+            db: Active database session.
+            user_id: UUID of the owning user.
+            spotify_ids: Ordered list of Spotify track IDs (from vector search).
+
+        Returns:
+            List of Track ORM objects in the same order as ``spotify_ids``.
+        """
+        if not spotify_ids:
+            return []
+        rows = (
+            db.query(Track)
+            .filter(Track.user_id == user_id, Track.spotify_track_id.in_(spotify_ids))
+            .all()
+        )
+        by_sid: dict[str, Track] = {t.spotify_track_id: t for t in rows}
+        return [by_sid[sid] for sid in spotify_ids if sid in by_sid]
+
     def delete_stale(self, db: Session, user_id: uuid.UUID) -> int:
         """Delete tracks cached more than 24 hours ago for a user.
 

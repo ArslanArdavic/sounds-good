@@ -74,8 +74,10 @@ class ChromaDBClient:
             n_results: Maximum number of results to return.
 
         Returns:
-            List of metadata dicts for the nearest neighbours, ordered by
-            ascending distance (most similar first).
+            List of dicts for the nearest neighbours, ordered by ascending
+            distance (most similar first).  Each dict contains the stored
+            metadata fields **plus** a ``"distance"`` key (cosine distance
+            where 0.0 = identical).
         """
         results = collection.query(
             query_embeddings=[query_embedding],
@@ -83,7 +85,11 @@ class ChromaDBClient:
             include=["metadatas", "distances"],
         )
         metadatas_list: list[dict] = results.get("metadatas", [[]])[0]
-        return metadatas_list
+        distances_list: list[float] = results.get("distances", [[]])[0]
+        return [
+            {**meta, "distance": dist}
+            for meta, dist in zip(metadatas_list, distances_list)
+        ]
 
     def delete_collection(self, user_id: uuid.UUID) -> None:
         """Delete the collection for a user (used when triggering a full re-sync).
