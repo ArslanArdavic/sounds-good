@@ -17,9 +17,9 @@ class Settings(BaseSettings):
     # Redis
     redis_url: str = "redis://localhost:6379"
 
-    # ChromaDB
+    # ChromaDB (default 8001 — backend API uses 8000; HttpClient must reach real Chroma)
     chromadb_host: str = "localhost"
-    chromadb_port: int = 8000
+    chromadb_port: int = 8001
 
     # Spotify API
     spotify_client_id: str

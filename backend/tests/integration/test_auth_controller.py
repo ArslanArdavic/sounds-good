@@ -77,7 +77,9 @@ def test_callback_success_returns_access_token(client):
     fake_user.id = uuid.uuid4()
 
     mock_service = MagicMock()
-    mock_service.handle_callback = AsyncMock(return_value=fake_user)
+    mock_service.handle_callback = AsyncMock(
+        return_value=(fake_user, ["user-read-email", "user-read-private"])
+    )
 
     app.dependency_overrides[get_spotify_auth_service] = lambda: mock_service
     response = client.get("/auth/callback?code=real_code&state=real_state")
@@ -87,6 +89,17 @@ def test_callback_success_returns_access_token(client):
     data = response.json()
     assert "access_token" in data
     assert len(data["access_token"]) > 20  # JWT is a non-trivial string
+
+    from jose import jwt as jose_jwt
+
+    from src.config import get_settings
+
+    payload = jose_jwt.decode(
+        data["access_token"],
+        get_settings().secret_key,
+        algorithms=["HS256"],
+    )
+    assert payload["scopes"] == ["user-read-email", "user-read-private"]
 
 
 def test_me_unauthenticated_returns_401(client):

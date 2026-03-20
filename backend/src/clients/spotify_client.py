@@ -11,17 +11,33 @@ SPOTIFY_AUTHORIZE_URL = "https://accounts.spotify.com/authorize"
 SPOTIFY_TOKEN_URL = "https://accounts.spotify.com/api/token"
 SPOTIFY_API_BASE = "https://api.spotify.com/v1"
 
-# All scopes requested upfront so users never need to re-authenticate.
-# Phase 1 needs user-read-private; Phases 2-5 need the rest.
-SPOTIFY_SCOPES = " ".join([
-    "user-read-private",
-    "user-read-email",
-    "user-library-read",
-    "playlist-read-private",
-    "playlist-read-collaborative",
-    "playlist-modify-public",
-    "playlist-modify-private",
-])
+# All documented Spotify Web API authorization scopes (space-separated for /authorize).
+# See https://developer.spotify.com/documentation/web-api/concepts/scopes
+SPOTIFY_SCOPES = " ".join(
+    sorted(
+        {
+            "app-remote-control",
+            "playlist-modify-private",
+            "playlist-modify-public",
+            "playlist-read-collaborative",
+            "playlist-read-private",
+            "streaming",
+            "ugc-image-upload",
+            "user-follow-modify",
+            "user-follow-read",
+            "user-library-modify",
+            "user-library-read",
+            "user-modify-playback-state",
+            "user-read-currently-playing",
+            "user-read-email",
+            "user-read-playback-position",
+            "user-read-playback-state",
+            "user-read-private",
+            "user-read-recently-played",
+            "user-top-read",
+        }
+    )
+)
 
 
 def _b64url_encode(data: bytes) -> str:
@@ -137,6 +153,112 @@ class SpotifyClient:
                 f"GET /me returned {response.status_code}: {response.text}",
             )
         return response.json()
+
+    async def get_user_playlists(
+        self, access_token: str, offset: int = 0, limit: int = 50
+    ) -> dict:
+        """Fetch a page of the current user's playlists.
+
+        Args:
+            access_token: A valid Spotify access token.
+            offset: Pagination offset (0-based).
+            limit: Number of playlists per page (max 50).
+
+        Returns:
+            Spotify paging object with keys: items, total, next, offset, limit.
+
+        Raises:
+            ExternalServiceError: On any non-2xx response from Spotify.
+        """
+        headers = {"Authorization": f"Bearer {access_token}"}
+        params = {"offset": offset, "limit": limit}
+        async with httpx.AsyncClient() as client:
+            response = await client.get(
+                f"{SPOTIFY_API_BASE}/me/playlists", headers=headers, params=params
+            )
+        if response.status_code != 200:
+            raise ExternalServiceError(
+                "Spotify",
+                f"GET /me/playlists returned {response.status_code}: {response.text}",
+            )
+        return response.json()
+
+    async def get_playlist_tracks(
+        self,
+        access_token: str,
+        playlist_id: str,
+        offset: int = 0,
+        limit: int = 50,
+    ) -> dict:
+        """Fetch a page of items from a playlist using the current (non-deprecated) endpoint.
+
+        Args:
+            access_token: A valid Spotify access token.
+            playlist_id: Spotify playlist ID.
+            offset: Pagination offset (0-based).
+            limit: Number of items per page (max 50).
+
+        Returns:
+            Spotify paging object with keys: items, total, next, offset, limit.
+            Each item has a ``track`` sub-object with id, name, artists, duration_ms.
+
+        Raises:
+            ExternalServiceError: On any non-2xx response from Spotify.
+        """
+        headers = {"Authorization": f"Bearer {access_token}"}
+        params = {"offset": offset, "limit": limit}
+        async with httpx.AsyncClient() as client:
+            response = await client.get(
+                f"{SPOTIFY_API_BASE}/playlists/{playlist_id}/items",
+                headers=headers,
+                params=params,
+            )
+        if response.status_code != 200:
+            raise ExternalServiceError(
+                "Spotify",
+                f"GET /playlists/{playlist_id}/items returned {response.status_code}: {response.text}",
+            )
+        return response.json()
+
+    async def get_audio_features(
+        self, access_token: str, track_ids: list[str]
+    ) -> list[dict]:
+        """Fetch audio features for up to 100 tracks per call.
+
+        Automatically batches lists longer than 100 into sequential requests.
+
+        Args:
+            access_token: A valid Spotify access token.
+            track_ids: List of Spotify track IDs (strings, no URI prefix).
+
+        Returns:
+            Flat list of audio-feature dicts (same order as input).
+            Tracks whose features are unavailable appear as ``None`` in Spotify's
+            response and are filtered out here.
+
+        Raises:
+            ExternalServiceError: On any non-2xx response from Spotify.
+        """
+        headers = {"Authorization": f"Bearer {access_token}"}
+        results: list[dict] = []
+        batch_size = 100
+        for i in range(0, len(track_ids), batch_size):
+            batch = track_ids[i : i + batch_size]
+            params = {"ids": ",".join(batch)}
+            async with httpx.AsyncClient() as client:
+                response = await client.get(
+                    f"{SPOTIFY_API_BASE}/audio-features",
+                    headers=headers,
+                    params=params,
+                )
+            if response.status_code != 200:
+                raise ExternalServiceError(
+                    "Spotify",
+                    f"GET /audio-features returned {response.status_code}: {response.text}",
+                )
+            features = response.json().get("audio_features", [])
+            results.extend(f for f in features if f is not None)
+        return results
 
     @staticmethod
     def _parse_token_response(response: httpx.Response) -> dict:

@@ -5,6 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from src.config import get_settings
 from src.controllers.auth_controller import router as auth_router
+from src.controllers.library_controller import router as library_router
 from src.middleware.error_handler import register_error_handlers
 from src.models import database  # noqa: F401 — ensures engine is initialised
 from src.models import playlist, spotify_token, track, user  # noqa: F401 — registers models with Base.metadata
@@ -29,6 +30,7 @@ app.add_middleware(
 register_error_handlers(app)
 
 app.include_router(auth_router)
+app.include_router(library_router)
 
 
 @app.get("/health", tags=["health"])

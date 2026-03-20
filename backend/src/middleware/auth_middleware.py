@@ -14,10 +14,16 @@ _ALGORITHM = "HS256"
 _TOKEN_EXPIRE_DAYS = 30
 
 
-def create_access_token(user_id: uuid.UUID) -> str:
+def create_access_token(
+    user_id: uuid.UUID,
+    *,
+    scopes: list[str] | None = None,
+) -> str:
     settings = get_settings()
     expire = datetime.now(timezone.utc) + timedelta(days=_TOKEN_EXPIRE_DAYS)
-    payload = {"sub": str(user_id), "exp": expire}
+    payload: dict = {"sub": str(user_id), "exp": expire}
+    if scopes is not None:
+        payload["scopes"] = scopes
     return jwt.encode(payload, settings.secret_key, algorithm=_ALGORITHM)
 
 

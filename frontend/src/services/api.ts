@@ -32,4 +32,15 @@ api.interceptors.response.use(
   },
 )
 
+export const startLibrarySync = () => api.post<{ status: string }>('/library/sync')
+
+export const getLibraryStatus = () =>
+  api.get<{
+    status: string
+    playlists_done?: number
+    total_playlists?: number
+    tracks_done?: number
+    error?: string | null
+  }>('/library/status')
+
 export default api

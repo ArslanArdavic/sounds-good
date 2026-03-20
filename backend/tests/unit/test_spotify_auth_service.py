@@ -25,6 +25,7 @@ def mock_spotify_client():
         "access_token": "access_abc",
         "refresh_token": "refresh_xyz",
         "expires_in": 3600,
+        "scope": "user-read-email user-read-private",
     })
     client.get_current_user = AsyncMock(return_value={"id": "spotify_user_123"})
     client.refresh_access_token = AsyncMock(return_value={
@@ -64,9 +65,10 @@ def test_generate_auth_url_unique_states(service):
 @pytest.mark.asyncio
 async def test_handle_callback_creates_user_and_token(service, db):
     _, state = service.generate_auth_url()
-    user = await service.handle_callback(code="auth_code", state=state, db=db)
+    user, scopes = await service.handle_callback(code="auth_code", state=state, db=db)
     assert user.spotify_id == "spotify_user_123"
     assert user.id is not None
+    assert scopes == ["user-read-email", "user-read-private"]
 
 
 @pytest.mark.asyncio
@@ -87,7 +89,7 @@ async def test_handle_callback_state_can_only_be_used_once(service, db):
 @pytest.mark.asyncio
 async def test_get_valid_access_token_non_expired(service, db):
     _, state = service.generate_auth_url()
-    user = await service.handle_callback(code="auth_code", state=state, db=db)
+    user, _ = await service.handle_callback(code="auth_code", state=state, db=db)
 
     token = await service.get_valid_access_token(user.id, db)
     assert token == "access_abc"
@@ -101,7 +103,7 @@ async def test_get_valid_access_token_expired_refreshes(service, db):
     from src.utils.token_encryptor import TokenEncryptor
 
     _, state = service.generate_auth_url()
-    user = await service.handle_callback(code="auth_code", state=state, db=db)
+    user, _ = await service.handle_callback(code="auth_code", state=state, db=db)
 
     # Force the token to appear expired in the DB
     encryptor = TokenEncryptor()

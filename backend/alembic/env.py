@@ -19,9 +19,7 @@ if config.config_file_name is not None:
 
 # add your model's MetaData object here
 # for 'autogenerate' support
-# from myapp import mymodel
-# target_metadata = mymodel.Base.metadata
-target_metadata = None
+target_metadata = Base.metadata
 
 # Allow DATABASE_URL to be overridden by the environment variable so that
 # `alembic upgrade head` works without editing alembic.ini.

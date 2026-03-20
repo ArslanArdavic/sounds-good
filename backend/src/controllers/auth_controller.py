@@ -42,8 +42,8 @@ async def callback(
     if not code or not state:
         raise AuthenticationError("Missing code or state parameter")
 
-    user = await auth_service.handle_callback(code=code, state=state, db=db)
-    access_token = create_access_token(user.id)
+    user, scopes = await auth_service.handle_callback(code=code, state=state, db=db)
+    access_token = create_access_token(user.id, scopes=scopes)
     return {"access_token": access_token}
 
 

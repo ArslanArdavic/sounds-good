@@ -1,7 +1,10 @@
+import logging
 import secrets
 import uuid
 from datetime import datetime, timedelta, timezone
 from threading import Lock
+
+logger = logging.getLogger(__name__)
 
 from sqlalchemy.orm import Session
 
@@ -13,6 +16,13 @@ from src.repositories.user_repository import UserRepository
 from src.utils.token_encryptor import TokenEncryptor
 
 _PKCE_STATE_TTL_SECONDS = 600  # 10 minutes — longer than typical OAuth round-trip
+
+
+def _parse_granted_scopes(scope_str: str) -> list[str]:
+    """Split Spotify's space-delimited scope string into a sorted list."""
+    if not scope_str or not scope_str.strip():
+        return []
+    return sorted({s for s in scope_str.split() if s})
 
 
 class _PkceStateStore:
@@ -82,7 +92,7 @@ class SpotifyAuthService:
 
     async def handle_callback(
         self, code: str, state: str, db: Session
-    ) -> User:
+    ) -> tuple[User, list[str]]:
         """Process the OAuth callback, persist tokens, and return the User.
 
         Args:
@@ -92,7 +102,7 @@ class SpotifyAuthService:
             db: SQLAlchemy session (transaction is committed here).
 
         Returns:
-            The upserted User ORM instance.
+            (upserted User, Spotify granted scopes as a sorted list).
 
         Raises:
             AuthenticationError: If state is invalid/expired.
@@ -105,6 +115,9 @@ class SpotifyAuthService:
         access_token: str = token_data["access_token"]
         refresh_token: str = token_data["refresh_token"]
         expires_in: int = token_data["expires_in"]  # seconds, typically 3600
+        scope_raw: str = token_data.get("scope", "")
+        granted_scopes = _parse_granted_scopes(scope_raw)
+        logger.info("Spotify granted scopes: %s", scope_raw or "<not returned>")
 
         # Fetch Spotify user profile to get the stable user ID
         spotify_user = await self._client.get_current_user(access_token)
@@ -122,7 +135,7 @@ class SpotifyAuthService:
         )
         db.commit()
         db.refresh(user)
-        return user
+        return user, granted_scopes
 
     async def get_valid_access_token(
         self, user_id: uuid.UUID, db: Session
