@@ -126,6 +126,24 @@ class TestAddTracks:
         assert len(pts) == 3
         assert [pt.position for pt in pts] == [1, 2, 3]
 
+    def test_same_track_id_twice_at_different_positions(self, db, user, repo):
+        from src.models.playlist import PlaylistTrack
+
+        tracks = _make_tracks(db, user.id, 1)
+        t = tracks[0]
+        pl = repo.upsert(db, user.id, "sp_pl_001", "Dupes")
+        repo.add_tracks(db, pl.id, [(t.id, 1), (t.id, 2)])
+
+        pts = (
+            db.query(PlaylistTrack)
+            .filter_by(playlist_id=pl.id)
+            .order_by(PlaylistTrack.position)
+            .all()
+        )
+        assert len(pts) == 2
+        assert pts[0].track_id == t.id and pts[0].position == 1
+        assert pts[1].track_id == t.id and pts[1].position == 2
+
     def test_replaces_existing_tracks_on_second_call(self, db, user, repo):
         from src.models.playlist import PlaylistTrack
         tracks = _make_tracks(db, user.id, 3)

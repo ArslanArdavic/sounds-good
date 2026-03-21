@@ -194,6 +194,34 @@ class TestPagination:
         ids = [t["spotify_track_id"] for t in tracks_data]
         assert ids.count("t_shared") == 1
 
+    @pytest.mark.asyncio
+    async def test_duplicate_spotify_track_in_playlist_passes_repeat_pairs_to_add_tracks(
+        self, mock_client, mock_auth, mock_track_repo, mock_playlist_repo, mock_vector, db
+    ):
+        """Same track twice in one Spotify playlist must map to two slots (positions 1 and 2)."""
+        mock_client.get_user_playlists.return_value = _paging([_playlist("pl1")])
+        mock_client.get_playlist_tracks.return_value = _paging(
+            [_track_item("t1"), _track_item("t1")]
+        )
+        mock_client.get_audio_features.return_value = [{"id": "t1", "energy": 0.5}]
+        db_track = _make_db_track("t1")
+        mock_track_repo.bulk_upsert.return_value = [db_track]
+
+        service = SpotifyService(
+            spotify_client=mock_client,
+            auth_service=mock_auth,
+            track_repo=mock_track_repo,
+            playlist_repo=mock_playlist_repo,
+            vector_search=mock_vector,
+        )
+        await service.sync_library(uuid.uuid4(), db)
+
+        mock_playlist_repo.add_tracks.assert_called_once()
+        pairs = mock_playlist_repo.add_tracks.call_args[0][2]
+        assert len(pairs) == 2
+        assert pairs[0][0] == pairs[1][0] == db_track.id
+        assert pairs[0][1] == 1 and pairs[1][1] == 2
+
 
 # ---------------------------------------------------------------------------
 # on_progress callback

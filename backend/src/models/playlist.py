@@ -38,10 +38,8 @@ class PlaylistTrack(Base):
     playlist_id: Mapped[uuid.UUID] = mapped_column(
         ForeignKey("playlists.id"), primary_key=True
     )
-    track_id: Mapped[uuid.UUID] = mapped_column(
-        ForeignKey("tracks.id"), primary_key=True
-    )
-    position: Mapped[int] = mapped_column(Integer, nullable=False)
+    position: Mapped[int] = mapped_column(Integer, primary_key=True)
+    track_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("tracks.id"), nullable=False)
 
     playlist: Mapped["Playlist"] = relationship("Playlist", back_populates="playlist_tracks")
     track: Mapped["Track"] = relationship(  # type: ignore[name-defined]
