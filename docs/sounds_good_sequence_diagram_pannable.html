@@ -230,7 +230,7 @@ const diagram = `sequenceDiagram
     GenSvc->>PromptBuilder: build(request, retrieved_tracks)
     PromptBuilder-->>GenSvc: Formatted prompt
     GenSvc->>LLMSvc: generate(prompt)
-    LLMSvc->>Groq: complete(prompt, model="llama-3.1-70b")
+    LLMSvc->>Groq: complete(prompt, model="llama-3.3-70b-versatile")
     Note over Groq: Analyzes 500-1000 tracks<br/>Selects 12 best matches<br/>Ensures ~45 min duration
     Groq-->>LLMSvc: JSON: [track_id_1, track_id_2, ...]
     LLMSvc->>LLMSvc: parse_response(json)
