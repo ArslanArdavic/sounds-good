@@ -1,0 +1,89 @@
+# DigitalOcean App Platform — import in the control panel or use: doctl apps create --spec .do/app.yaml
+# Replace OWNER/sounds-good if your GitHub repo path differs.
+# Add these as encrypted env vars on the api component (Settings → api → Environment):
+#   SECRET_KEY, ENCRYPTION_KEY, SPOTIFY_CLIENT_ID, SPOTIFY_CLIENT_SECRET, GROQ_API_KEY
+# Set after Vercel deploy (must match Spotify dashboard redirect URI exactly):
+#   SPOTIFY_REDIRECT_URI=https://<your-vercel>.vercel.app/callback
+#   CORS_ORIGINS=["https://<your-vercel>.vercel.app"]
+#
+# ChromaDB is an internal service; the API reaches it at http://chromadb:8000
+
+name: sounds-good
+region: nyc
+
+ingress:
+  rules:
+    - component:
+        name: api
+      match:
+        path:
+          prefix: /
+
+databases:
+  - name: postgres-db
+    engine: PG
+    production: false
+  - name: redis-cache
+    engine: REDIS
+    production: false
+
+services:
+  - name: api
+    github:
+      repo: ArslanArdavic/sounds-good
+      branch: main
+      deploy_on_push: true
+    dockerfile_path: backend/Dockerfile
+    source_dir: backend
+    http_port: 8080
+    instance_size_slug: apps-s-1vcpu-1gb
+    instance_count: 1
+    run_command: "sh -c 'poetry run alembic upgrade head && exec poetry run uvicorn src.main:app --host 0.0.0.0 --port ${PORT:-8080}'"
+    health_check:
+      http_path: /health
+      initial_delay_seconds: 30
+      period_seconds: 10
+      timeout_seconds: 5
+      success_threshold: 1
+      failure_threshold: 5
+    envs:
+      - key: ENVIRONMENT
+        value: production
+        scope: RUN_TIME
+        type: GENERAL
+      - key: DEBUG
+        value: "false"
+        scope: RUN_TIME
+        type: GENERAL
+      - key: DATABASE_URL
+        value: ${postgres-db.DATABASE_URL}
+        scope: RUN_TIME
+        type: GENERAL
+      - key: REDIS_URL
+        value: ${redis-cache.REDIS_URL}
+        scope: RUN_TIME
+        type: GENERAL
+      - key: CHROMADB_HOST
+        value: chromadb
+        scope: RUN_TIME
+        type: GENERAL
+      - key: CHROMADB_PORT
+        value: "8000"
+        scope: RUN_TIME
+        type: GENERAL
+      # SPOTIFY_REDIRECT_URI must be the frontend callback URL, e.g. https://xxx.vercel.app/callback
+      - key: CORS_ORIGINS
+        value: '["http://localhost:3000"]'
+        scope: RUN_TIME
+        type: GENERAL
+
+  - name: chromadb
+    image:
+      registry_type: DOCKER_HUB
+      registry: docker.io
+      repository: chromadb/chroma
+      tag: latest
+    internal_ports:
+      - 8000
+    instance_size_slug: apps-s-1vcpu-0_5gb
+    instance_count: 1
