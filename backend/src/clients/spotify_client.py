@@ -19,25 +19,12 @@ SPOTIFY_ADD_TRACKS_BATCH_SIZE = 100
 SPOTIFY_SCOPES = " ".join(
     sorted(
         {
-            "app-remote-control",
             "playlist-modify-private",
             "playlist-modify-public",
             "playlist-read-collaborative",
             "playlist-read-private",
-            "streaming",
-            "ugc-image-upload",
-            "user-follow-modify",
-            "user-follow-read",
             "user-library-modify",
             "user-library-read",
-            "user-modify-playback-state",
-            "user-read-currently-playing",
-            "user-read-email",
-            "user-read-playback-position",
-            "user-read-playback-state",
-            "user-read-private",
-            "user-read-recently-played",
-            "user-top-read",
         }
     )
 )
