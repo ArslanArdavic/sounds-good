@@ -437,7 +437,7 @@ sounds-good/
 #### Backend Tasks:
 1. **Spotify Playlist API**
    - Extend `SpotifyService`:
-     - `create_playlist(user_id, name, description)`
+     - `create_playlist` → `POST /v1/me/playlists` (see Spotify [Create playlist](https://developer.spotify.com/documentation/web-api/reference/create-playlist))
      - `add_tracks_to_playlist(playlist_id, track_uris)` in batches
    - Handle API errors and rate limits
 

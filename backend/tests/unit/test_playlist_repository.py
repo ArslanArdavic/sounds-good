@@ -147,3 +147,28 @@ class TestAddTracks:
         repo.add_tracks(db, pl.id, [])
         pts = db.query(PlaylistTrack).filter_by(playlist_id=pl.id).all()
         assert pts == []
+
+
+class TestLinkSpotifyPlaylist:
+    def test_sets_spotify_id_for_owner(self, db, user, repo):
+        pl = repo.create_ai_playlist(db, user.id, "AI")
+        assert pl.spotify_playlist_id is None
+        out = repo.link_spotify_playlist(db, pl.id, user.id, "sp_pl_" + "x" * 16)
+        assert out is not None
+        assert out.spotify_playlist_id == "sp_pl_" + "x" * 16
+        assert len(out.spotify_playlist_id) == 22
+
+    def test_returns_none_for_wrong_user(self, db, user, repo):
+        other = User(spotify_id="other_pl_user")
+        db.add(other)
+        db.flush()
+        pl = repo.create_ai_playlist(db, user.id, "AI")
+        out = repo.link_spotify_playlist(db, pl.id, other.id, "sp_pl_" + "y" * 16)
+        assert out is None
+        db.refresh(pl)
+        assert pl.spotify_playlist_id is None
+
+    def test_returns_none_if_playlist_missing(self, db, user, repo):
+        missing = uuid.uuid4()
+        out = repo.link_spotify_playlist(db, missing, user.id, "sp_pl_" + "z" * 16)
+        assert out is None

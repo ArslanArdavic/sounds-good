@@ -9,8 +9,10 @@ from typing import Any
 
 from sqlalchemy.orm import Session
 
-from src.clients.spotify_client import SpotifyClient
-from src.middleware.error_handler import ExternalServiceError
+from src.clients.spotify_client import SPOTIFY_ADD_TRACKS_BATCH_SIZE, SpotifyClient
+from src.models.playlist import Playlist
+from src.models.user import User
+from src.middleware.error_handler import ExternalServiceError, NotFoundError
 from src.repositories.playlist_repository import PlaylistRepository
 from src.repositories.track_repository import TrackRepository
 from src.services.spotify_auth_service import SpotifyAuthService, get_spotify_auth_service
@@ -271,3 +273,55 @@ class SpotifyService:
             "playlists_synced": total_playlists,
             "tracks_synced": len(upserted_tracks),
         }
+
+    async def save_playlist_to_spotify(
+        self,
+        db: Session,
+        user: User,
+        playlist: Playlist,
+    ) -> Playlist:
+        """Create a Spotify playlist, add tracks in batches, link the local row.
+
+        Args:
+            db: Active session (caller commits).
+            user: Authenticated user (must own ``playlist``).
+            playlist: Loaded playlist with ``playlist_tracks`` and nested ``track``.
+
+        Returns:
+            Playlist with ``spotify_playlist_id`` set and relations loaded.
+
+        Raises:
+            NotFoundError: If the playlist row could not be updated (should not
+                happen if the caller validated ownership).
+            ExternalServiceError: On Spotify API failures after retries.
+        """
+        ordered = sorted(playlist.playlist_tracks, key=lambda pt: pt.position)
+        track_uris = [f"spotify:track:{pt.track.spotify_track_id}" for pt in ordered]
+
+        access_token = await self._auth.get_valid_access_token(user.id, db)
+
+        created = await _with_backoff(
+            lambda: self._client.create_playlist(
+                access_token,
+                playlist.name,
+                description="Created by Sounds Good",
+                public=False,
+            )
+        )
+        spotify_playlist_id: str = created["id"]
+
+        for i in range(0, len(track_uris), SPOTIFY_ADD_TRACKS_BATCH_SIZE):
+            batch = track_uris[i : i + SPOTIFY_ADD_TRACKS_BATCH_SIZE]
+            await _with_backoff(
+                lambda b=batch: self._client.add_tracks_to_playlist_batch(
+                    access_token, spotify_playlist_id, b
+                )
+            )
+
+        updated = self._playlists.link_spotify_playlist(
+            db, playlist.id, user.id, spotify_playlist_id
+        )
+        if updated is None:
+            raise NotFoundError("Playlist not found")
+        reloaded = self._playlists.get_with_tracks(db, playlist.id)
+        return reloaded if reloaded is not None else updated

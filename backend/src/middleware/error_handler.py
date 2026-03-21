@@ -36,6 +36,13 @@ class AuthorizationError(AppError):
         )
 
 
+class ConflictError(AppError):
+    def __init__(self, message: str = "Resource conflict") -> None:
+        super().__init__(
+            message, status_code=status.HTTP_409_CONFLICT, error_code="conflict"
+        )
+
+
 class ExternalServiceError(AppError):
     def __init__(self, service: str, message: str) -> None:
         super().__init__(

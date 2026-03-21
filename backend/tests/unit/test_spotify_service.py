@@ -8,6 +8,7 @@ import pytest
 
 from src.services.spotify_service import SpotifyService
 from src.middleware.error_handler import ExternalServiceError
+from src.clients.spotify_client import SPOTIFY_ADD_TRACKS_BATCH_SIZE
 
 
 # ---------------------------------------------------------------------------
@@ -268,3 +269,80 @@ class TestExponentialBackoff:
         with patch("src.services.spotify_service.asyncio.sleep", new_callable=AsyncMock):
             with pytest.raises(ExternalServiceError):
                 await service.sync_library(uuid.uuid4(), db)
+
+
+# ---------------------------------------------------------------------------
+# save_playlist_to_spotify
+# ---------------------------------------------------------------------------
+
+
+class TestSavePlaylistToSpotify:
+    @pytest.mark.asyncio
+    async def test_creates_playlist_and_batches_add_tracks(self, mock_auth, db):
+        mock_client = AsyncMock()
+        mock_client.create_playlist.return_value = {"id": "sp_pl_" + "a" * 16}
+        mock_client.add_tracks_to_playlist_batch = AsyncMock(return_value=None)
+        mock_pr = MagicMock()
+        linked = SimpleNamespace(id=uuid.uuid4(), spotify_playlist_id="sp_pl_" + "a" * 16, playlist_tracks=[])
+        mock_pr.link_spotify_playlist.return_value = linked
+        mock_pr.get_with_tracks.return_value = linked
+
+        n = SPOTIFY_ADD_TRACKS_BATCH_SIZE + 50
+        playlist_tracks = [
+            SimpleNamespace(
+                position=i + 1,
+                track=SimpleNamespace(spotify_track_id=f"{i:022d}"),
+            )
+            for i in range(n)
+        ]
+        playlist = SimpleNamespace(
+            id=uuid.uuid4(),
+            user_id=uuid.uuid4(),
+            name="My PL",
+            playlist_tracks=playlist_tracks,
+        )
+        user = SimpleNamespace(id=uuid.uuid4(), spotify_id="u" * 22)
+
+        service = SpotifyService(
+            spotify_client=mock_client,
+            auth_service=mock_auth,
+            playlist_repo=mock_pr,
+            track_repo=MagicMock(),
+            vector_search=MagicMock(),
+        )
+        out = await service.save_playlist_to_spotify(db, user, playlist)
+
+        mock_client.create_playlist.assert_called_once()
+        assert mock_client.add_tracks_to_playlist_batch.call_count == 2
+        mock_pr.link_spotify_playlist.assert_called_once()
+        assert out.spotify_playlist_id == "sp_pl_" + "a" * 16
+
+    @pytest.mark.asyncio
+    async def test_empty_playlist_still_creates_spotify_playlist(self, mock_auth, db):
+        mock_client = AsyncMock()
+        mock_client.create_playlist.return_value = {"id": "sp_pl_" + "b" * 16}
+        mock_client.add_tracks_to_playlist_batch = AsyncMock(return_value=None)
+        mock_pr = MagicMock()
+        linked = SimpleNamespace(id=uuid.uuid4(), spotify_playlist_id="sp_pl_" + "b" * 16, playlist_tracks=[])
+        mock_pr.link_spotify_playlist.return_value = linked
+        mock_pr.get_with_tracks.return_value = linked
+
+        playlist = SimpleNamespace(
+            id=uuid.uuid4(),
+            user_id=uuid.uuid4(),
+            name="Empty",
+            playlist_tracks=[],
+        )
+        user = SimpleNamespace(id=uuid.uuid4(), spotify_id="v" * 22)
+
+        service = SpotifyService(
+            spotify_client=mock_client,
+            auth_service=mock_auth,
+            playlist_repo=mock_pr,
+            track_repo=MagicMock(),
+            vector_search=MagicMock(),
+        )
+        await service.save_playlist_to_spotify(db, user, playlist)
+
+        mock_client.create_playlist.assert_called_once()
+        mock_client.add_tracks_to_playlist_batch.assert_not_called()

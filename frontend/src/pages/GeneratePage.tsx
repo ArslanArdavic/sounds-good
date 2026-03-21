@@ -16,6 +16,8 @@ interface Playlist {
   name: string
   total_duration_ms: number
   track_count: number
+  spotify_playlist_id?: string | null
+  spotify_playlist_url?: string | null
   playlist_tracks: Array<{ position: number; track: Track }>
 }
 
@@ -33,10 +35,13 @@ export default function GeneratePage() {
   const [isGenerating, setIsGenerating] = useState(false)
   const [playlist, setPlaylist] = useState<Playlist | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [isSaving, setIsSaving] = useState(false)
+  const [saveError, setSaveError] = useState<string | null>(null)
   const handleGenerate = async () => {
     if (!text.trim() || isGenerating) return
     setIsGenerating(true)
     setError(null)
+    setSaveError(null)
     setPlaylist(null)
 
     try {
@@ -57,6 +62,7 @@ export default function GeneratePage() {
   const handleGenerateAnother = () => {
     setPlaylist(null)
     setError(null)
+    setSaveError(null)
     window.scrollTo({ top: 0, behavior: 'smooth' })
   }
 
@@ -118,7 +124,15 @@ export default function GeneratePage() {
 
         {isGenerating && <GeneratingState />}
         {playlist && (
-          <PlaylistResult playlist={playlist} onGenerateAnother={handleGenerateAnother} />
+          <PlaylistResult
+            playlist={playlist}
+            onGenerateAnother={handleGenerateAnother}
+            onPlaylistSaved={setPlaylist}
+            isSaving={isSaving}
+            saveError={saveError}
+            onSaveError={setSaveError}
+            onSavingChange={setIsSaving}
+          />
         )}
         {!isGenerating && !playlist && !error && <EmptyState />}
       </main>
@@ -167,11 +181,41 @@ function GeneratingState() {
 function PlaylistResult({
   playlist,
   onGenerateAnother,
+  onPlaylistSaved,
+  isSaving,
+  saveError,
+  onSaveError,
+  onSavingChange,
 }: {
   playlist: Playlist
   onGenerateAnother: () => void
+  onPlaylistSaved: (p: Playlist) => void
+  isSaving: boolean
+  saveError: string | null
+  onSaveError: (msg: string | null) => void
+  onSavingChange: (v: boolean) => void
 }) {
   const totalMin = Math.round(playlist.total_duration_ms / 60000)
+  const saved = Boolean(playlist.spotify_playlist_id)
+
+  const handleSaveToSpotify = async () => {
+    if (saved || isSaving) return
+    onSaveError(null)
+    onSavingChange(true)
+    try {
+      const { data } = await api.post<Playlist>(`/playlist/${playlist.id}/save-to-spotify`)
+      onPlaylistSaved(data)
+    } catch (err) {
+      if (axios.isAxiosError(err) && err.response?.data) {
+        const data = err.response.data as { message?: string; error?: string }
+        onSaveError(data.message ?? data.error ?? 'Could not save to Spotify.')
+      } else {
+        onSaveError('Could not save to Spotify. Please try again.')
+      }
+    } finally {
+      onSavingChange(false)
+    }
+  }
 
   return (
     <div className="mt-8">
@@ -209,13 +253,37 @@ function PlaylistResult({
         ))}
       </div>
 
+      {saveError && (
+        <p className="mt-4 text-sm text-red-500 text-center">{saveError}</p>
+      )}
+
+      {saved && (
+        <p className="mt-4 text-sm text-center" style={{ color: 'var(--text)' }}>
+          {playlist.spotify_playlist_url ? (
+            <>
+              Saved to Spotify —{' '}
+              <a
+                href={playlist.spotify_playlist_url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="underline text-spotify-green"
+              >
+                Open in Spotify
+              </a>
+            </>
+          ) : (
+            'Saved to Spotify'
+          )}
+        </p>
+      )}
+
       <button
         type="button"
-        disabled
-        title="Saving to Spotify is planned for Phase 5"
-        className="mt-4 w-full py-3 rounded-full text-sm font-medium transition-opacity cursor-not-allowed opacity-50 bg-spotify-green text-white"
+        onClick={handleSaveToSpotify}
+        disabled={saved || isSaving}
+        className="mt-4 w-full py-3 rounded-full text-sm font-medium transition-opacity bg-spotify-green text-white hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
       >
-        Save to Spotify (Phase 5)
+        {saved ? 'Saved to Spotify' : isSaving ? 'Saving…' : 'Save to Spotify'}
       </button>
 
       <button

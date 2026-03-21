@@ -17,7 +17,15 @@ class PlaylistResponse(BaseModel):
     id: uuid.UUID
     name: str
     created_at: datetime
+    spotify_playlist_id: str | None = None
     playlist_tracks: list[PlaylistTrackResponse] = []
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def spotify_playlist_url(self) -> str | None:
+        if self.spotify_playlist_id:
+            return f"https://open.spotify.com/playlist/{self.spotify_playlist_id}"
+        return None
 
     @computed_field  # type: ignore[prop-decorator]
     @property

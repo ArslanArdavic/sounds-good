@@ -11,6 +11,9 @@ SPOTIFY_AUTHORIZE_URL = "https://accounts.spotify.com/authorize"
 SPOTIFY_TOKEN_URL = "https://accounts.spotify.com/api/token"
 SPOTIFY_API_BASE = "https://api.spotify.com/v1"
 
+# Spotify caps "Add items to playlist" at 100 URIs per request.
+SPOTIFY_ADD_TRACKS_BATCH_SIZE = 100
+
 # All documented Spotify Web API authorization scopes (space-separated for /authorize).
 # See https://developer.spotify.com/documentation/web-api/concepts/scopes
 SPOTIFY_SCOPES = " ".join(
@@ -259,6 +262,85 @@ class SpotifyClient:
             features = response.json().get("audio_features", [])
             results.extend(f for f in features if f is not None)
         return results
+
+    async def create_playlist(
+        self,
+        access_token: str,
+        name: str,
+        *,
+        description: str = "",
+        public: bool = False,
+    ) -> dict:
+        """Create an empty playlist for the current user.
+
+        Uses ``POST /v1/me/playlists`` (replaces deprecated
+        ``POST /v1/users/{user_id}/playlists``). The token identifies the user.
+
+        Returns:
+            Spotify playlist object including ``id`` (22-char playlist id).
+
+        Raises:
+            ExternalServiceError: On any non-success response from Spotify.
+        """
+        headers = {
+            "Authorization": f"Bearer {access_token}",
+            "Content-Type": "application/json",
+        }
+        body = {"name": name, "description": description, "public": public}
+        async with httpx.AsyncClient() as client:
+            response = await client.post(
+                f"{SPOTIFY_API_BASE}/me/playlists",
+                headers=headers,
+                json=body,
+            )
+        if response.status_code not in (200, 201):
+            raise ExternalServiceError(
+                "Spotify",
+                f"POST /me/playlists returned {response.status_code}: {response.text}",
+            )
+        return response.json()
+
+    async def add_tracks_to_playlist_batch(
+        self,
+        access_token: str,
+        playlist_id: str,
+        track_uris: list[str],
+    ) -> None:
+        """Append up to ``SPOTIFY_ADD_TRACKS_BATCH_SIZE`` track URIs to a playlist.
+
+        Args:
+            access_token: Valid Spotify access token.
+            playlist_id: Target playlist Spotify id.
+            track_uris: ``spotify:track:...`` URIs (length must be ≤ batch size).
+
+        Raises:
+            ExternalServiceError: On any non-success response from Spotify.
+            ValueError: If ``len(track_uris)`` exceeds ``SPOTIFY_ADD_TRACKS_BATCH_SIZE``.
+        """
+        if len(track_uris) > SPOTIFY_ADD_TRACKS_BATCH_SIZE:
+            raise ValueError(
+                f"At most {SPOTIFY_ADD_TRACKS_BATCH_SIZE} URIs per request; "
+                f"got {len(track_uris)}"
+            )
+        if not track_uris:
+            return
+        headers = {
+            "Authorization": f"Bearer {access_token}",
+            "Content-Type": "application/json",
+        }
+        # Current API: POST /v1/playlists/{id}/items (replaces deprecated .../tracks).
+        # https://developer.spotify.com/documentation/web-api/reference/add-items-to-playlist
+        async with httpx.AsyncClient() as client:
+            response = await client.post(
+                f"{SPOTIFY_API_BASE}/playlists/{playlist_id}/items",
+                headers=headers,
+                json={"uris": track_uris},
+            )
+        if response.status_code not in (200, 201):
+            raise ExternalServiceError(
+                "Spotify",
+                f"POST /playlists/{playlist_id}/items returned {response.status_code}: {response.text}",
+            )
 
     @staticmethod
     def _parse_token_response(response: httpx.Response) -> dict:

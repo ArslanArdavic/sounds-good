@@ -47,6 +47,7 @@ ENV/
 
 # ChromaDB
 chroma_data/
+backend/chroma/
 
 # Node
 node_modules/

@@ -3,6 +3,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from src.clients.spotify_client import SPOTIFY_ADD_TRACKS_BATCH_SIZE
 from src.middleware.error_handler import ExternalServiceError
 
 
@@ -189,3 +190,93 @@ class TestGetAudioFeatures:
             result = await client.get_audio_features("tok", [])
         mock_cls.assert_not_called()
         assert result == []
+
+
+# ---------------------------------------------------------------------------
+# create_playlist
+# ---------------------------------------------------------------------------
+
+
+class TestCreatePlaylist:
+    @pytest.mark.asyncio
+    async def test_returns_playlist_json(self, client):
+        body = {"id": "pl_new_spotify_id_00001", "name": "Test"}
+        mock_http = AsyncMock()
+        mock_http.__aenter__.return_value.post = AsyncMock(
+            return_value=_mock_response(201, body)
+        )
+        with patch("src.clients.spotify_client.httpx.AsyncClient", return_value=mock_http):
+            result = await client.create_playlist("tok", "Test")
+        assert result["id"] == "pl_new_spotify_id_00001"
+
+    @pytest.mark.asyncio
+    async def test_posts_to_me_playlists(self, client):
+        body = {"id": "pl1", "name": "A"}
+        mock_post = AsyncMock(return_value=_mock_response(200, body))
+        mock_http = AsyncMock()
+        mock_http.__aenter__.return_value.post = mock_post
+        with patch("src.clients.spotify_client.httpx.AsyncClient", return_value=mock_http):
+            await client.create_playlist("tok", "A")
+        assert mock_post.call_args is not None
+        assert "/me/playlists" in mock_post.call_args.args[0]
+
+    @pytest.mark.asyncio
+    async def test_accepts_200(self, client):
+        body = {"id": "pl1", "name": "A"}
+        mock_http = AsyncMock()
+        mock_http.__aenter__.return_value.post = AsyncMock(
+            return_value=_mock_response(200, body)
+        )
+        with patch("src.clients.spotify_client.httpx.AsyncClient", return_value=mock_http):
+            result = await client.create_playlist("tok", "A")
+        assert result["id"] == "pl1"
+
+    @pytest.mark.asyncio
+    async def test_raises_on_error(self, client):
+        mock_http = AsyncMock()
+        mock_http.__aenter__.return_value.post = AsyncMock(
+            return_value=_mock_response(403, {"error": "Forbidden"})
+        )
+        with patch("src.clients.spotify_client.httpx.AsyncClient", return_value=mock_http):
+            with pytest.raises(ExternalServiceError):
+                await client.create_playlist("tok", "X")
+
+
+# ---------------------------------------------------------------------------
+# add_tracks_to_playlist_batch
+# ---------------------------------------------------------------------------
+
+
+class TestAddTracksToPlaylistBatch:
+    @pytest.mark.asyncio
+    async def test_posts_uris(self, client):
+        mock_post = AsyncMock(return_value=_mock_response(201, {"snapshot_id": "s1"}))
+        mock_http = AsyncMock()
+        mock_http.__aenter__.return_value.post = mock_post
+        uris = ["spotify:track:t1", "spotify:track:t2"]
+        with patch("src.clients.spotify_client.httpx.AsyncClient", return_value=mock_http):
+            await client.add_tracks_to_playlist_batch("tok", "plid", uris)
+        assert mock_post.call_args.kwargs["json"]["uris"] == uris
+        assert "/playlists/plid/items" in mock_post.call_args.args[0]
+
+    @pytest.mark.asyncio
+    async def test_empty_list_no_http(self, client):
+        with patch("src.clients.spotify_client.httpx.AsyncClient") as mock_cls:
+            await client.add_tracks_to_playlist_batch("tok", "plid", [])
+        mock_cls.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_raises_if_batch_too_large(self, client):
+        uris = [f"spotify:track:t{i}" for i in range(SPOTIFY_ADD_TRACKS_BATCH_SIZE + 1)]
+        with pytest.raises(ValueError, match="At most"):
+            await client.add_tracks_to_playlist_batch("tok", "plid", uris)
+
+    @pytest.mark.asyncio
+    async def test_raises_on_error(self, client):
+        mock_http = AsyncMock()
+        mock_http.__aenter__.return_value.post = AsyncMock(
+            return_value=_mock_response(400, {"error": "Bad"})
+        )
+        with patch("src.clients.spotify_client.httpx.AsyncClient", return_value=mock_http):
+            with pytest.raises(ExternalServiceError):
+                await client.add_tracks_to_playlist_batch("tok", "plid", ["spotify:track:a"])

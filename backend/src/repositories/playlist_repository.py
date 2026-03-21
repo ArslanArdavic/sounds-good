@@ -113,3 +113,26 @@ class PlaylistRepository:
         ]
         db.add_all(new_entries)
         db.flush()
+
+    def link_spotify_playlist(
+        self,
+        db: Session,
+        playlist_id: uuid.UUID,
+        user_id: uuid.UUID,
+        spotify_playlist_id: str,
+    ) -> Playlist | None:
+        """Set ``spotify_playlist_id`` on a playlist owned by ``user_id``.
+
+        Returns:
+            Updated ``Playlist`` if found and owned; otherwise ``None``.
+        """
+        playlist = (
+            db.query(Playlist)
+            .filter(Playlist.id == playlist_id, Playlist.user_id == user_id)
+            .first()
+        )
+        if playlist is None:
+            return None
+        playlist.spotify_playlist_id = spotify_playlist_id
+        db.flush()
+        return playlist
