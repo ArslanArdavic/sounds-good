@@ -839,6 +839,7 @@ The current version does not forward the `state` query parameter to the backend.
 
 Replace the `useEffect` body:
 
+{% raw %}
 ```typescript
 import { useEffect, useRef } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
@@ -905,6 +906,7 @@ function MusicBars() {
   )
 }
 ```
+{% endraw %}
 
 **Key change:** `state` is now extracted from `searchParams` and appended to the `/auth/callback` request. If `state` is missing (e.g. the user navigated directly to `/callback`), the page redirects to `/?error=access_denied`.
 
@@ -912,6 +914,7 @@ function MusicBars() {
 
 The current `LoginPage` does not react to `?error=` query params. After auth failures (e.g. user denies Spotify access), `CallbackPage` redirects to `/?error=access_denied`. Update `LoginPage` to read and display these messages:
 
+{% raw %}
 ```typescript
 import { useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
@@ -1002,6 +1005,7 @@ function SpotifyIcon() {
   )
 }
 ```
+{% endraw %}
 
 ---
 
